@@ -333,9 +333,9 @@ async function dFetch(url, opts) {
 
 async function drivePull() {
   if (!gToken) return;
-  // find existing data file
+  // find existing data file (most recently modified first, in case of duplicates)
   const q = encodeURIComponent("'" + 'appDataFolder' + "' in parents and name='" + DATA_FILENAME + "' and trashed=false");
-  const list = await dFetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&spaces=appDataFolder&fields=files(id,name,modifiedTime)');
+  const list = await dFetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&spaces=appDataFolder&orderBy=modifiedTime%20desc&fields=files(id,name,modifiedTime)');
   if (list.files && list.files.length) {
     driveFileId = list.files[0].id;
     const text = await dFetch('https://www.googleapis.com/drive/v3/files/' + driveFileId + '?alt=media');
@@ -366,12 +366,34 @@ async function drivePull() {
         migrateSessions();
         refreshProjectUI();
         renderAll();
+        lastPullTime = Date.now();
+        lastSyncError = null;
       }
-    } catch (e) { console.warn('Parse cloud data failed', e); }
+    } catch (e) { console.warn('Parse cloud data failed', e); lastSyncError = 'Download parse failed'; }
+  } else {
+    // no cloud file yet
+    lastPullTime = Date.now();
   }
+  updateSyncStatus();
 }
 
 let pushTimer = null;
+let lastPushTime = null;
+let lastPullTime = null;
+let lastSyncError = null;
+
+function updateSyncStatus() {
+  const el = $('syncStatus');
+  if (!el) return;
+  const fmt = t => t ? new Date(t).toLocaleTimeString() : 'never';
+  el.innerHTML =
+    'Local sessions: <b>' + sessions.length + '</b><br>' +
+    'Last upload: <b>' + fmt(lastPushTime) + '</b><br>' +
+    'Last download: <b>' + fmt(lastPullTime) + '</b>' +
+    (lastSyncError ? '<br><span style="color:var(--danger)">Error: ' + escapeHtml(lastSyncError) + '</span>' : '') +
+    (driveFileId ? '<br>Cloud file: <b>found</b>' : '<br>Cloud file: <b>not found yet</b>');
+}
+
 function drivePush() {
   if (!gToken) return;
   // debounce: batch rapid changes into one upload
@@ -443,10 +465,31 @@ async function uploadNow() {
     if (!r.ok) throw new Error('Upload ' + r.status);
     const j = await r.json();
     driveFileId = j.id;
+    lastPushTime = Date.now();
+    lastSyncError = null;
   } catch (e) {
     console.warn('Drive push failed', e);
+    lastSyncError = 'Upload failed: ' + e.message;
   }
+  updateSyncStatus();
 }
+
+$('btnSyncNow').onclick = async () => {
+  if (!gToken) { toast('Not signed in'); return; }
+  toast('Syncing...');
+  try {
+    await uploadNow();
+    await drivePull();
+    lastPullTime = Date.now();
+    lastSyncError = null;
+    toast('Sync complete: ' + sessions.length + ' sessions');
+  } catch (e) {
+    lastSyncError = e.message;
+    toast('Sync failed: ' + e.message);
+  }
+  updateSyncStatus();
+  renderAll();
+};
 
 /* ---------- Projects settings UI ---------- */
 function renderProjectList() {
