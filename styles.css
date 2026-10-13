@@ -364,3 +364,82 @@ code.sql {
   .app { padding: 24px 0 100px; }
   .topbar { padding: 8px 20px 16px; }
 }
+
+/* ---------- Desktop ---------- */
+@media (min-width: 900px) {
+  .app {
+    max-width: 1060px;
+    padding: 0 0 60px;
+  }
+  .topbar {
+    padding: 28px 32px 20px;
+  }
+  .brand-name { font-size: 22px; }
+  .brand-sub { font-size: 14px; }
+  .brand-mark { width: 52px; height: 52px; font-size: 28px; border-radius: 16px; }
+
+  main { padding: 8px 32px; gap: 18px; }
+
+  .card { padding: 30px; border-radius: 24px; }
+  .card h2 { font-size: 19px; }
+
+  /* Top nav instead of bottom tab bar */
+  .topbar { order: 1; }
+  main { order: 3; }
+  .tabbar {
+    order: 2;
+    position: sticky;
+    top: 0;
+    bottom: auto;
+    max-width: none;
+    border-top: none;
+    border-bottom: 1px solid var(--line);
+    padding: 10px 32px;
+    justify-content: center;
+    gap: 6px;
+    background: rgba(244,246,250,.94);
+    z-index: 60;
+  }
+  .tab {
+    flex: none;
+    flex-direction: row;
+    gap: 8px;
+    font-size: 14px;
+    padding: 10px 20px;
+  }
+  .tab-ico { font-size: 17px; }
+  .tab.active { background: var(--primary-soft); border-radius: 12px; }
+  .tab:hover:not(.active) { background: #eef1f6; border-radius: 12px; }
+
+  /* Timer page: side by side */
+  #page-timer {
+    display: none;
+    grid-template-columns: 1.15fr 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+  #page-timer.active { display: grid; }
+  .timer-display { font-size: 92px; }
+
+  /* Day page: comfortable reading width */
+  #page-day .card { max-width: 720px; margin: 0 auto; width: 100%; }
+
+  /* Week page: chart and rows side by side */
+  #page-week .card { max-width: 860px; margin: 0 auto; width: 100%; }
+  .bar-chart { height: 140px; }
+
+  /* Month page: two-column day list */
+  #page-month .card { max-width: 860px; margin: 0 auto; width: 100%; }
+  #page-month .day-rows {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .summary-num span { font-size: 60px; }
+  .big-total span { font-size: 30px; }
+
+  /* Login gate: larger card */
+  .login-card { max-width: 460px; padding: 52px 48px; }
+  .login-card h1 { font-size: 34px; }
+}
