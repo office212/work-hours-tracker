@@ -166,9 +166,16 @@ function toast(msg) {
 /* ---------- Google Drive sync (private appDataFolder) ---------- */
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const DATA_FILENAME = 'work-hours.json';
+const LS_TOKEN = 'wh_token';
 let gToken = null;
 let tokenClient = null;
 let driveFileId = null;
+let silentAuth = false;
+
+function saveToken(t) {
+  if (t) { try { localStorage.setItem(LS_TOKEN, t); } catch (e) {} }
+  else { try { localStorage.removeItem(LS_TOKEN); } catch (e) {} }
+}
 
 function setSyncUI(state) {
   // state: 'off' | 'on' | 'syncing' | 'error'
@@ -203,8 +210,18 @@ function makeTokenClient(clientId) {
     client_id: clientId,
     scope: DRIVE_SCOPE,
     callback: async (resp) => {
-      if (resp.error) { toast('Google sign-in failed'); return; }
+      if (resp.error) {
+        gToken = null;
+        saveToken(null);
+        setSyncUI('off');
+        showGate();
+        if (!silentAuth) toast('Google sign-in failed');
+        silentAuth = false;
+        return;
+      }
+      silentAuth = false;
       gToken = resp.access_token;
+      saveToken(gToken);
       setSyncUI('syncing');
       try {
         await drivePull();
@@ -220,6 +237,32 @@ function makeTokenClient(clientId) {
   });
 }
 
+// Try to restore the previous session without asking the user to sign in again
+async function tryRestoreSession() {
+  const saved = (() => { try { return localStorage.getItem(LS_TOKEN); } catch (e) { return null; } })();
+  if (!saved) { showGate(); return; }
+  gToken = saved;
+  setSyncUI('syncing');
+  try {
+    await drivePull();
+    setSyncUI('on');
+    showApp();
+    renderAll();
+  } catch (e) {
+    // token expired: try a silent refresh (works if still signed in to Google)
+    console.warn('Saved token invalid, trying silent refresh', e);
+    gToken = null;
+    saveToken(null);
+    silentAuth = true;
+    try {
+      tokenClient.requestAccessToken({ prompt: '' });
+    } catch (err) {
+      silentAuth = false;
+      showGate();
+    }
+  }
+}
+
 function initGIS() {
   if (typeof google === 'undefined' || !google.accounts) {
     setTimeout(initGIS, 500);
@@ -227,6 +270,7 @@ function initGIS() {
   }
   tokenClient = makeTokenClient(getClientId());
   if (getClientId()) renderGoogleButton();
+  tryRestoreSession();
 }
 
 function renderGoogleButton() {
@@ -269,6 +313,7 @@ $('btnGoogleOut').onclick = () => {
     try { google.accounts.oauth2.revoke(gToken, () => {}); } catch (e) {}
   }
   gToken = null;
+  saveToken(null);
   driveFileId = null;
   setSyncUI('off');
   showGate();
@@ -277,8 +322,34 @@ $('btnGoogleOut').onclick = () => {
 
 async function dFetch(url, opts) {
   opts = opts || {};
-  opts.headers = Object.assign({}, opts.headers, { Authorization: 'Bearer ' + gToken });
-  const r = await fetch(url, opts);
+  const doFetch = async () => {
+    const o = Object.assign({}, opts, {
+      headers: Object.assign({}, opts.headers, { Authorization: 'Bearer ' + gToken })
+    });
+    return fetch(url, o);
+  };
+  let r = await doFetch();
+  if (r.status === 401 && gToken) {
+    // token expired mid-session: one silent refresh attempt
+    gToken = null;
+    saveToken(null);
+    silentAuth = true;
+    await new Promise(resolve => {
+      const origCb = tokenClient.callback;
+      tokenClient.callback = async (resp) => {
+        tokenClient.callback = origCb;
+        if (!resp.error && resp.access_token) {
+          gToken = resp.access_token;
+          saveToken(gToken);
+        }
+        silentAuth = false;
+        resolve();
+      };
+      try { tokenClient.requestAccessToken({ prompt: '' }); }
+      catch (e) { tokenClient.callback = origCb; silentAuth = false; resolve(); }
+    });
+    if (gToken) r = await doFetch();
+  }
   if (!r.ok) throw new Error('Drive API ' + r.status);
   const ct = r.headers.get('content-type') || '';
   return ct.includes('json') ? r.json() : r.text();
