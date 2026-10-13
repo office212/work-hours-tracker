@@ -1293,6 +1293,7 @@ function renderAll() {
   renderDay();
   renderWeek();
   renderMonth();
+  renderStats();
 }
 
 $('todayLabel').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
