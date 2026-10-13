@@ -81,6 +81,8 @@ function refreshProjectUI() {
   $('weekFilter').value = weekFilter;
   fillProjectSelect($('monthFilter'), true);
   $('monthFilter').value = monthFilter;
+  fillProjectSelect($('statsFilter'), true);
+  $('statsFilter').value = statsFilter;
   renderProjectList();
 }
 
@@ -784,13 +786,117 @@ $('monthNext').onclick = () => { monthCursor.setMonth(monthCursor.getMonth() + 1
 $('weekFilter').onchange = e => { weekFilter = e.target.value; renderWeek(); };
 $('monthFilter').onchange = e => { monthFilter = e.target.value; renderMonth(); };
 
-/* ---------- Navigation ---------- */
+/* ---------- Statistics ---------- */
+let statsFilter = 'all';
+
+function renderStats() {
+  const list = filteredSessions(sessions, statsFilter);
+  const totalSec = list.reduce((a, s) => a + s.seconds, 0);
+
+  // per-day map
+  const byDay = {};
+  list.forEach(s => {
+    byDay[s.date] = (byDay[s.date] || 0) + s.seconds;
+  });
+  const dayKeys = Object.keys(byDay).sort();
+  const daysWorked = dayKeys.length;
+
+  // this week / this month
+  const ws = weekStart(new Date());
+  const mk = dateKey(new Date()).slice(0, 7);
+  let weekSec = 0, monthSec = 0;
+  list.forEach(s => {
+    if (parseKey(s.date) >= ws) weekSec += s.seconds;
+    if (s.date.slice(0, 7) === mk) monthSec += s.seconds;
+  });
+
+  // best day
+  let bestDay = null, bestSec = 0;
+  dayKeys.forEach(k => { if (byDay[k] > bestSec) { bestSec = byDay[k]; bestDay = k; } });
+
+  // streak (consecutive days ending today or yesterday)
+  let streak = 0;
+  const d = new Date();
+  if (!byDay[dateKey(d)]) d.setDate(d.getDate() - 1);
+  while (byDay[dateKey(d)]) { streak++; d.setDate(d.getDate() - 1); }
+
+  const avgDay = daysWorked ? totalSec / daysWorked : 0;
+  const avgSession = list.length ? totalSec / list.length : 0;
+
+  const stats = [
+    { val: fmtHours(totalSec), unit: 'hrs', lbl: 'Total Hours', accent: true },
+    { val: fmtHours(weekSec), unit: 'hrs', lbl: 'This Week' },
+    { val: fmtHours(monthSec), unit: 'hrs', lbl: 'This Month' },
+    { val: fmtHours(avgDay), unit: 'hrs', lbl: 'Avg / Day' },
+    { val: String(list.length), unit: '', lbl: 'Sessions' },
+    { val: String(streak), unit: 'days', lbl: 'Day Streak' },
+    { val: fmtHours(avgSession), unit: 'hrs', lbl: 'Avg Session' },
+    { val: String(daysWorked), unit: '', lbl: 'Days Worked' }
+  ];
+
+  const grid = $('statGrid');
+  grid.innerHTML = '';
+  stats.forEach(st => {
+    const b = document.createElement('div');
+    b.className = 'stat-box' + (st.accent ? ' accent' : '');
+    b.innerHTML = '<div class="stat-val">' + st.val + (st.unit ? '<small> ' + st.unit + '</small>' : '') + '</div>' +
+      '<div class="stat-lbl">' + st.lbl + '</div>';
+    grid.appendChild(b);
+  });
+
+  // by project bars
+  const byProj = {};
+  list.forEach(s => {
+    const pid = s.projectId || getDefaultProjectId();
+    byProj[pid] = (byProj[pid] || 0) + s.seconds;
+  });
+  const entries = Object.entries(byProj).sort((a, b) => b[1] - a[1]);
+  const maxP = entries.length ? entries[0][1] : 1;
+  const bars = $('projBars');
+  bars.innerHTML = '';
+  entries.forEach(([pid, sec]) => {
+    const row = document.createElement('div');
+    row.className = 'proj-bar-row';
+    const pct = Math.max(2, Math.round((sec / maxP) * 100));
+    row.innerHTML =
+      '<div class="proj-bar-top"><span class="pname">' + escapeHtml(getProject(pid).name) + '</span>' +
+      '<span class="phrs">' + fmtHours(sec) + ' hrs</span></div>' +
+      '<div class="proj-bar-track"><div class="proj-bar-fill" style="width:' + pct + '%"></div></div>';
+    bars.appendChild(row);
+  });
+
+  // highlights
+  const hl = $('statHighlights');
+  hl.innerHTML = '';
+  const items = [];
+  if (bestDay) items.push(['Best Day', parseKey(bestDay).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), fmtHours(bestSec) + ' hrs']);
+  if (streak >= 2) items.push(['Current Streak', streak + ' days in a row', '']);
+  // busiest weekday
+  const dowSec = [0, 0, 0, 0, 0, 0, 0];
+  list.forEach(s => { dowSec[parseKey(s.date).getDay()] += s.seconds; });
+  const dowNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  let bd = 0;
+  dowSec.forEach((v, i) => { if (v > dowSec[bd]) bd = i; });
+  if (dowSec[bd] > 0) items.push(['Busiest Weekday', dowNames[bd], fmtHours(dowSec[bd]) + ' hrs total']);
+  items.forEach(([t, a, b]) => {
+    const r = document.createElement('div');
+    r.className = 'day-row';
+    r.innerHTML = '<div class="dow">' + t + '<small>' + a + '</small></div>' +
+      '<div class="hrs">' + b + '</div>';
+    hl.appendChild(r);
+  });
+  if (!items.length) {
+    hl.innerHTML = '<div class="day-row"><div class="dow">No data yet<small>Start tracking to see insights</small></div><div class="hrs zero">—</div></div>';
+  }
+}
+$('statsFilter').onchange = e => { statsFilter = e.target.value; renderStats(); };
 function switchPage(name) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.page === name));
   document.querySelectorAll('.tab-page').forEach(p => p.classList.toggle('active', p.id === 'page-' + name));
   if (name === 'day') renderDay();
   if (name === 'week') renderWeek();
   if (name === 'month') renderMonth();
+  if (name === 'stats') renderStats();
   window.scrollTo({ top: 0 });
 }
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => switchPage(t.dataset.page));

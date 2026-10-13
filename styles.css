@@ -550,3 +550,54 @@ code.sql {
   margin-top: 3px;
   font-style: italic;
 }
+
+/* ---------- Statistics ---------- */
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 6px;
+}
+.stat-box {
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 16px;
+  text-align: center;
+}
+.stat-box .stat-val {
+  font-size: 30px; font-weight: 800; letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.stat-box .stat-val small { font-size: 14px; font-weight: 600; color: var(--muted); }
+.stat-box .stat-lbl { font-size: 12px; font-weight: 600; color: var(--muted); margin-top: 4px; }
+.stat-box.accent { background: linear-gradient(135deg, var(--primary), var(--primary-2)); border: none; }
+.stat-box.accent .stat-val, .stat-box.accent .stat-lbl { color: #fff; }
+.stat-box.accent .stat-val small { color: rgba(255,255,255,.75); }
+
+.proj-bars { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.proj-bar-row { display: flex; flex-direction: column; gap: 6px; }
+.proj-bar-top { display: flex; justify-content: space-between; font-size: 14px; }
+.proj-bar-top .pname { font-weight: 700; }
+.proj-bar-top .phrs { font-weight: 800; color: var(--primary); font-variant-numeric: tabular-nums; }
+.proj-bar-track {
+  height: 10px; border-radius: 999px;
+  background: #eef1f6;
+  overflow: hidden;
+}
+.proj-bar-fill {
+  height: 100%; border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary), var(--primary-2));
+  transition: width .6s ease;
+  min-width: 4px;
+}
+.proj-bars:empty::after {
+  content: 'No hours logged yet';
+  color: var(--faint); font-size: 14px; text-align: center; padding: 14px;
+}
+
+@media (min-width: 900px) {
+  .stat-grid { grid-template-columns: repeat(4, 1fr); }
+  #page-stats .card { max-width: 860px; margin: 0 auto; width: 100%; }
+}
