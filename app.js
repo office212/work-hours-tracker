@@ -404,11 +404,9 @@ let lastSyncError = null;
 let debugLog = [];
 
 function dbg(msg) {
-  const t = new Date().toLocaleTimeString();
-  debugLog.push('[' + t + '] ' + msg);
-  if (debugLog.length > 20) debugLog.shift();
-  const el = $('syncDebug');
-  if (el) el.textContent = debugLog.join('\n');
+  // debug logging disabled in production; kept as no-op for future troubleshooting
+  // const t = new Date().toLocaleTimeString();
+  // debugLog.push('[' + t + '] ' + msg);
 }
 
 function updateSyncStatus() {
