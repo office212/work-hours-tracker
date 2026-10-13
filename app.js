@@ -332,15 +332,20 @@ async function dFetch(url, opts) {
 }
 
 async function drivePull() {
-  if (!gToken) return;
+  if (!gToken) { dbg('pull: no token'); return; }
+  dbg('pull: querying Drive...');
   // find existing data file (most recently modified first, in case of duplicates)
   const q = encodeURIComponent("'" + 'appDataFolder' + "' in parents and name='" + DATA_FILENAME + "' and trashed=false");
   const list = await dFetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&spaces=appDataFolder&orderBy=modifiedTime%20desc&fields=files(id,name,modifiedTime)');
+  dbg('pull: found ' + (list.files ? list.files.length : 0) + ' files');
   if (list.files && list.files.length) {
     driveFileId = list.files[0].id;
+    dbg('pull: fileId=' + driveFileId);
     const text = await dFetch('https://www.googleapis.com/drive/v3/files/' + driveFileId + '?alt=media');
+    dbg('pull: downloaded ' + text.length + ' chars');
     try {
       const cloud = JSON.parse(text);
+      dbg('pull: cloud has ' + (cloud.sessions ? cloud.sessions.length : 0) + ' sessions, ' + (cloud.projects ? cloud.projects.length : 0) + ' projects');
       if (Array.isArray(cloud.sessions)) {
         // merge sessions: cloud wins on conflict by updatedAt
         const byId = {};
@@ -390,6 +395,15 @@ let pushTimer = null;
 let lastPushTime = null;
 let lastPullTime = null;
 let lastSyncError = null;
+let debugLog = [];
+
+function dbg(msg) {
+  const t = new Date().toLocaleTimeString();
+  debugLog.push('[' + t + '] ' + msg);
+  if (debugLog.length > 20) debugLog.shift();
+  const el = $('syncDebug');
+  if (el) el.textContent = debugLog.join('\n');
+}
 
 function updateSyncStatus() {
   const el = $('syncStatus');
@@ -477,12 +491,14 @@ async function uploadNow() {
       };
     }
     const r = await fetch(url, { method, headers, body });
+    dbg('push: ' + method + ' -> ' + r.status);
     if (!r.ok) {
       const errText = await r.text().catch(() => '');
       throw new Error('Upload ' + r.status + ' ' + errText.substring(0, 100));
     }
     const j = await r.json();
     driveFileId = j.id;
+    dbg('push: OK fileId=' + driveFileId);
   };
   try {
     try {
