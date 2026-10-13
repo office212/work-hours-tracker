@@ -438,7 +438,8 @@ window.addEventListener('focus', async () => {
 
 async function uploadNow() {
   if (!gToken) return;
-  try {
+  // One upload attempt: PATCH the known cloud file, or create it when unknown.
+  const attemptUpload = async () => {
     const payload = JSON.stringify({
       sessions,
       projects: getProjects(),
@@ -482,6 +483,21 @@ async function uploadNow() {
     }
     const j = await r.json();
     driveFileId = j.id;
+  };
+  try {
+    try {
+      await attemptUpload();
+    } catch (e) {
+      // The cloud file may have been deleted on another device (e.g. the
+      // corrupt-file cleanup): the cached id is stale, so drop it and create
+      // a fresh file instead of failing every upload forever.
+      if (driveFileId && String((e && e.message) || e).indexOf('404') !== -1) {
+        driveFileId = null;
+        await attemptUpload();
+      } else {
+        throw e;
+      }
+    }
     lastPushTime = Date.now();
     lastSyncError = null;
   } catch (e) {
@@ -495,11 +511,13 @@ $('btnSyncNow').onclick = async () => {
   if (!gToken) { toast('Not signed in'); return; }
   toast('Syncing...');
   try {
-    await uploadNow();
+    // Pull FIRST to get latest cloud data, then push merged result.
+    // (Pushing first would overwrite cloud with stale local data.)
     await drivePull();
     lastPullTime = Date.now();
+    await uploadNow();
     lastSyncError = null;
-    toast('Sync complete: ' + sessions.length + ' sessions');
+    toast('Sync complete: ' + sessions.length + ' sessions, ' + getProjects().length + ' projects');
   } catch (e) {
     lastSyncError = e.message;
     toast('Sync failed: ' + e.message);
