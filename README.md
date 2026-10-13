@@ -1,1 +1,36 @@
-IyBXb3JrIEhvdXJzIFRyYWNrZXIKCkEgYmVhdXRpZnVsLCBjbGVhbiBzdG9wd2F0Y2ggYXBwIGZvciB0cmFja2luZyB3b3JrIGhvdXJzLiBTdGFydCwgcGF1c2UsIHN0b3AgYW5kIHNhdmUgc2Vzc2lvbnMuIFZpZXcgdG90YWxzIGJ5IGRheSwgd2VlayBhbmQgbW9udGguIE9wdGlvbmFsbHkgc3luYyBldmVyeXRoaW5nIHRvIEdvb2dsZSBTaGVldHMuCgojIyBGZWF0dXJlcwoKLSAqKlN0b3B3YXRjaCoqOiBzdGFydCwgcGF1c2UsIHJlc3VtZSwgc3RvcCBhbmQgc2F2ZSwgcmVzZXQKLSAqKlRvZGF5IHZpZXcqKjogbGl2ZSB0b3RhbCBwbHVzIHNlc3Npb24gbGlzdCB3aXRoIGRlbGV0ZQotICoqRGFpbHkgbG9nKio6IHBpY2sgYW55IGRhdGUsIHNlZSBzZXNzaW9ucyBhbmQgdG90YWwKLSAqKldlZWtseSB2aWV3Kio6IGJhciBjaGFydCBwbHVzIHBlci1kYXkgYnJlYWtkb3duLCBuYXZpZ2F0ZSB3ZWVrcwotICoqTW9udGhseSB2aWV3Kio6IHBlci1kYXkgYnJlYWtkb3duIHdpdGggbW9udGhseSB0b3RhbCwgbmF2aWdhdGUgbW9udGhzCi0gKipHb29nbGUgU2hlZXRzIHN5bmMqKjogZXZlcnkgc2F2ZWQgc2Vzc2lvbiBpcyBsb2dnZWQgdG8gYSBzcHJlYWRzaGVldCB3aXRoIERhaWx5LCBXZWVrbHkgYW5kIE1vbnRobHkgc3VtbWFyeSB0YWJzCi0gKipMb2NhbCBmaXJzdCoqOiBhbGwgZGF0YSBpcyBzdG9yZWQgb24gdGhlIGRldmljZSAobG9jYWxTdG9yYWdlKSwgZXhwb3J0YWJsZSBhcyBKU09OCgojIyBHb29nbGUgU2hlZXRzIHNldHVwCgoxLiBHbyB0byB0aGUgW0dvb2dsZSBDbG91ZCBDb25zb2xlXShodHRwczovL2NvbnNvbGUuY2xvdWQuZ29vZ2xlLmNvbS8pIGFuZCBjcmVhdGUgYSBwcm9qZWN0LgoyLiBFbmFibGUgdGhlICoqR29vZ2xlIFNoZWV0cyBBUEkqKiAoQVBJcyBhbmQgU2VydmljZXMgPiBMaWJyYXJ5KS4KMy4gQ3JlYXRlIGFuICoqT0F1dGggMi4wIENsaWVudCBJRCoqIChBUElzIGFuZCBTZXJ2aWNlcyA+IENyZWRlbnRpYWxzID4gQ3JlYXRlIENyZWRlbnRpYWxzKSwgdHlwZSAqKldlYiBhcHBsaWNhdGlvbioqLgo0LiBVbmRlciAqKkF1dGhvcml6ZWQgSmF2YVNjcmlwdCBvcmlnaW5zKiogYWRkIHlvdXIgaG9zdGVkIFVSTCwgZS5nLiBgaHR0cHM6Ly9vZmZpY2UyMTIuZ2l0aHViLmlvYC4KNS4gQ29weSB0aGUgQ2xpZW50IElELCBvcGVuIHRoZSBhcHAsIGdvIHRvIHRoZSAqKlN5bmMqKiB0YWIgYW5kIHBhc3RlIGl0Lgo2LiBUYXAgKipDb25uZWN0IEdvb2dsZSoqLiBBIG5ldyBzcHJlYWRzaGVldCBjYWxsZWQgIldvcmsgSG91cnMgVHJhY2tlciIgaXMgY3JlYXRlZCBhdXRvbWF0aWNhbGx5IChvciBwYXN0ZSBhbiBleGlzdGluZyBTcHJlYWRzaGVldCBJRCBmaXJzdCkuCjcuIEV2ZXJ5IHNhdmVkIHNlc3Npb24gc3luY3MgaW5zdGFudGx5LiBUYXAgKipTeW5jIE5vdyoqIGFueXRpbWUgZm9yIGEgZnVsbCByZWZyZXNoLgoKIyMgU3ByZWFkc2hlZXQgbGF5b3V0Cgp8IFRhYiAgICAgIHwgQ29sdW1ucyAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgIHwKfC0tLS0tLS0tLS18LS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS0tLS18CnwgU2Vzc2lvbnMgfCBEYXRlLCBTdGFydCBUaW1lLCBFbmQgVGltZSwgRHVyYXRpb24gKGhycykgfAp8IERhaWx5ICAgIHwgRGF0ZSwgVG90YWwgSG91cnMsIFNlc3Npb25zICAgICAgICAgICAgICAgIHwKfCBXZWVrbHkgICB8IFdlZWsgU3RhcnRpbmcsIFRvdGFsIEhvdXJzLCBEYXlzIFdvcmtlZCAgICB8CnwgTW9udGhseSAgfCBNb250aCwgVG90YWwgSG91cnMsIERheXMgV29ya2VkICAgICAgICAgICAgfAoKIyMgSG9zdGluZwoKRGVzaWduZWQgZm9yIEdpdEh1YiBQYWdlcy4gRW5hYmxlIFBhZ2VzIG9uIHRoZSBgbWFpbmAgYnJhbmNoIGFuZCB0aGUgYXBwIGlzIGxpdmUuCg==
+# Work Hours Tracker
+
+A beautiful, clean stopwatch app for tracking work hours. Start, pause, stop and save sessions. View totals by day, week and month. Optionally sync everything to Google Sheets.
+
+## Features
+
+- **Stopwatch**: start, pause, resume, stop and save, reset
+- **Today view**: live total plus session list with delete
+- **Daily log**: pick any date, see sessions and total
+- **Weekly view**: bar chart plus per-day breakdown, navigate weeks
+- **Monthly view**: per-day breakdown with monthly total, navigate months
+- **Google Sheets sync**: every saved session is logged to a spreadsheet with Daily, Weekly and Monthly summary tabs
+- **Local first**: all data is stored on the device (localStorage), exportable as JSON
+
+## Google Sheets setup
+
+1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create a project.
+2. Enable the **Google Sheets API** (APIs and Services > Library).
+3. Create an **OAuth 2.0 Client ID** (APIs and Services > Credentials > Create Credentials), type **Web application**.
+4. Under **Authorized JavaScript origins** add your hosted URL, e.g. `https://office212.github.io`.
+5. Copy the Client ID, open the app, go to the **Sync** tab and paste it.
+6. Tap **Connect Google**. A new spreadsheet called "Work Hours Tracker" is created automatically (or paste an existing Spreadsheet ID first).
+7. Every saved session syncs instantly. Tap **Sync Now** anytime for a full refresh.
+
+## Spreadsheet layout
+
+| Tab      | Columns                                    |
+|----------|--------------------------------------------|
+| Sessions | Date, Start Time, End Time, Duration (hrs) |
+| Daily    | Date, Total Hours, Sessions                |
+| Weekly   | Week Starting, Total Hours, Days Worked    |
+| Monthly  | Month, Total Hours, Days Worked            |
+
+## Hosting
+
+Designed for GitHub Pages. Enable Pages on the `main` branch and the app is live.
