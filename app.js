@@ -170,7 +170,6 @@ const LS_TOKEN = 'wh_token';
 let gToken = null;
 let tokenClient = null;
 let driveFileId = null;
-let silentAuth = false;
 
 function saveToken(t) {
   if (t) { try { localStorage.setItem(LS_TOKEN, t); } catch (e) {} }
@@ -209,36 +208,66 @@ function makeTokenClient(clientId) {
   return google.accounts.oauth2.initTokenClient({
     client_id: clientId,
     scope: DRIVE_SCOPE,
+    ux_mode: 'redirect',
+    redirect_uri: 'https://office212.github.io/work-hours-tracker/',
     callback: async (resp) => {
-      if (resp.error) {
+      // In redirect mode the token arrives via URL hash, not here.
+      // This handles the rare popup fallback path.
+      if (resp && resp.error) {
         gToken = null;
         saveToken(null);
         setSyncUI('off');
         showGate();
-        if (!silentAuth) toast('Google sign-in failed');
-        silentAuth = false;
         return;
       }
-      silentAuth = false;
-      gToken = resp.access_token;
-      saveToken(gToken);
-      setSyncUI('syncing');
-      try {
-        await drivePull();
-        setSyncUI('on');
-        showApp();
-        renderAll();
-        toast('Welcome back.');
-      } catch (e) {
-        console.warn('Drive pull failed', e);
-        setSyncUI('error');
+      if (resp && resp.access_token) {
+        await completeLogin(resp.access_token);
       }
     }
   });
 }
 
+async function completeLogin(token) {
+  gToken = token;
+  saveToken(token);
+  setSyncUI('syncing');
+  try {
+    await drivePull();
+    setSyncUI('on');
+    showApp();
+    renderAll();
+    toast('Welcome back.');
+  } catch (e) {
+    console.warn('Drive pull failed', e);
+    setSyncUI('error');
+  }
+}
+
+// Handle the redirect back from Google (token arrives in URL hash, no popup)
+function handleRedirectResult() {
+  const hash = window.location.hash;
+  if (!hash || hash.indexOf('access_token=') === -1) return false;
+  const params = new URLSearchParams(hash.substring(1));
+  // clean the token out of the address bar
+  try { window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch (e) {}
+  if (params.get('error')) {
+    toast('Google sign-in was cancelled');
+    showGate();
+    return true;
+  }
+  const token = params.get('access_token');
+  if (token) {
+    completeLogin(token);
+    return true;
+  }
+  return false;
+}
+
 // Try to restore the previous session without asking the user to sign in again
 async function tryRestoreSession() {
+  // 1. Coming back from Google redirect?
+  if (handleRedirectResult()) return;
+  // 2. Saved token from a previous visit?
   const saved = (() => { try { return localStorage.getItem(LS_TOKEN); } catch (e) { return null; } })();
   if (!saved) { showGate(); return; }
   gToken = saved;
@@ -249,17 +278,13 @@ async function tryRestoreSession() {
     showApp();
     renderAll();
   } catch (e) {
-    // token expired: try a silent refresh (works if still signed in to Google)
-    console.warn('Saved token invalid, trying silent refresh', e);
+    // token expired: clear it, user signs in again with one redirect (no popup)
+    console.warn('Saved token invalid', e);
     gToken = null;
     saveToken(null);
-    silentAuth = true;
-    try {
-      tokenClient.requestAccessToken({ prompt: '' });
-    } catch (err) {
-      silentAuth = false;
-      showGate();
-    }
+    setSyncUI('off');
+    showGate();
+    toast('Session expired, please sign in again');
   }
 }
 
@@ -272,7 +297,7 @@ function initGIS() {
   tryRestoreSession();
 }
 
-// Single sign-in button: one popup for sign-in + Drive permission
+// Single sign-in button: redirect to Google and back, no popup at all
 $('btnGoogleSignin').onclick = () => {
   if (!tokenClient) { toast('Still loading, try again in a moment'); return; }
   try {
@@ -308,33 +333,15 @@ $('btnGoogleOut').onclick = () => {
 
 async function dFetch(url, opts) {
   opts = opts || {};
-  const doFetch = async () => {
-    const o = Object.assign({}, opts, {
-      headers: Object.assign({}, opts.headers, { Authorization: 'Bearer ' + gToken })
-    });
-    return fetch(url, o);
-  };
-  let r = await doFetch();
-  if (r.status === 401 && gToken) {
-    // token expired mid-session: one silent refresh attempt
+  opts.headers = Object.assign({}, opts.headers, { Authorization: 'Bearer ' + gToken });
+  const r = await fetch(url, opts);
+  if (r.status === 401) {
+    // token expired mid-session: clear it so the next load asks for a fresh sign-in
     gToken = null;
     saveToken(null);
-    silentAuth = true;
-    await new Promise(resolve => {
-      const origCb = tokenClient.callback;
-      tokenClient.callback = async (resp) => {
-        tokenClient.callback = origCb;
-        if (!resp.error && resp.access_token) {
-          gToken = resp.access_token;
-          saveToken(gToken);
-        }
-        silentAuth = false;
-        resolve();
-      };
-      try { tokenClient.requestAccessToken({ prompt: '' }); }
-      catch (e) { tokenClient.callback = origCb; silentAuth = false; resolve(); }
-    });
-    if (gToken) r = await doFetch();
+    setSyncUI('off');
+    showGate();
+    toast('Session expired, please sign in again');
   }
   if (!r.ok) throw new Error('Drive API ' + r.status);
   const ct = r.headers.get('content-type') || '';
