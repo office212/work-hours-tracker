@@ -369,7 +369,16 @@ async function drivePull() {
         lastPullTime = Date.now();
         lastSyncError = null;
       }
-    } catch (e) { console.warn('Parse cloud data failed', e); lastSyncError = 'Download parse failed'; }
+    } catch (e) {
+      console.warn('Parse cloud data failed', e);
+      lastSyncError = 'Download parse failed';
+      // Corrupt cloud file: delete it so the next push creates a clean one
+      try {
+        await dFetch('https://www.googleapis.com/drive/v3/files/' + driveFileId, { method: 'DELETE' });
+        console.warn('Deleted corrupt cloud file');
+      } catch (delErr) { console.warn('Could not delete corrupt file', delErr); }
+      driveFileId = null;
+    }
   } else {
     // no cloud file yet
     lastPullTime = Date.now();
@@ -436,33 +445,40 @@ async function uploadNow() {
       dayNotes: getDayNotes(),
       exportedAt: new Date().toISOString()
     });
-    const metadata = { name: DATA_FILENAME, parents: ['appDataFolder'] };
-    const boundary = 'wht' + Date.now();
-    const body =
-      '--' + boundary + '\r\n' +
-      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
-      JSON.stringify(metadata) + '\r\n' +
-      '--' + boundary + '\r\n' +
-      'Content-Type: application/json\r\n\r\n' +
-      payload + '\r\n' +
-      '--' + boundary + '--';
-    let url, method;
+    let url, method, headers, body;
     if (driveFileId) {
-      url = 'https://www.googleapis.com/upload/drive/v3/files/' + driveFileId + '?uploadType=multipart';
+      // Update existing file: simple media upload (just the JSON)
+      url = 'https://www.googleapis.com/upload/drive/v3/files/' + driveFileId + '?uploadType=media';
       method = 'PATCH';
+      headers = {
+        Authorization: 'Bearer ' + gToken,
+        'Content-Type': 'application/json'
+      };
+      body = payload;
     } else {
+      // Create new file: multipart with metadata
+      const metadata = { name: DATA_FILENAME, parents: ['appDataFolder'], mimeType: 'application/json' };
+      const boundary = 'wht' + Date.now();
+      body =
+        '--' + boundary + '\r\n' +
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+        JSON.stringify(metadata) + '\r\n' +
+        '--' + boundary + '\r\n' +
+        'Content-Type: application/json\r\n\r\n' +
+        payload + '\r\n' +
+        '--' + boundary + '--';
       url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
       method = 'POST';
-    }
-    const r = await fetch(url, {
-      method,
-      headers: {
+      headers = {
         Authorization: 'Bearer ' + gToken,
         'Content-Type': 'multipart/related; boundary=' + boundary
-      },
-      body
-    });
-    if (!r.ok) throw new Error('Upload ' + r.status);
+      };
+    }
+    const r = await fetch(url, { method, headers, body });
+    if (!r.ok) {
+      const errText = await r.text().catch(() => '');
+      throw new Error('Upload ' + r.status + ' ' + errText.substring(0, 100));
+    }
     const j = await r.json();
     driveFileId = j.id;
     lastPushTime = Date.now();
