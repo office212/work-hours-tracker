@@ -760,26 +760,62 @@ function renderMonth() {
   $('monthLabel').textContent = monthCursor.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const y = monthCursor.getFullYear(), m = monthCursor.getMonth();
   const daysIn = new Date(y, m + 1, 0).getDate();
+  const firstDow = new Date(y, m, 1).getDay();
   let monthSec = 0, workedDays = 0;
-  const rows = $('monthRows');
-  rows.innerHTML = '';
-  const todayK = dateKey(new Date());
+
+  // totals (respect filter)
   for (let d = 1; d <= daysIn; d++) {
     const k = y + '-' + pad(m + 1) + '-' + pad(d);
     const s = filteredSessions(sessionsFor(k), monthFilter).reduce((a, x) => a + x.seconds, 0);
     if (s > 0) { monthSec += s; workedDays++; }
-    const dt = new Date(y, m, d);
-    const r = document.createElement('div');
-    r.className = 'day-row' + (k === todayK ? ' today' : '');
-    r.innerHTML = '<div class="dow">' + dt.toLocaleDateString('en-US', { weekday: 'short' }) +
-      '<small>' + dt.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + '</small></div>' +
-      '<div class="hrs' + (s === 0 ? ' zero' : '') + '">' + (s === 0 ? '—' : fmtHours(s) + ' hrs') + '</div>';
-    if (s > 0) { r.style.cursor = 'pointer'; r.onclick = () => { dayCursor = k; switchPage('day'); }; }
-    rows.appendChild(r);
   }
   $('monthTotal').textContent = fmtHours(monthSec);
   $('monthCap').textContent = workedDays + ' day' + (workedDays === 1 ? '' : 's') + ' worked' +
     (monthFilter !== 'all' ? ' · ' + getProject(monthFilter).name : '');
+
+  // calendar grid
+  const grid = $('calGrid');
+  grid.innerHTML = '';
+  const dowNames = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+  dowNames.forEach(n => {
+    const h = document.createElement('div');
+    h.className = 'cal-dow'; h.textContent = n;
+    grid.appendChild(h);
+  });
+
+  const todayK = dateKey(new Date());
+  const prevDays = new Date(y, m, 0).getDate();
+
+  // leading days from previous month
+  for (let i = firstDow - 1; i >= 0; i--) {
+    const cell = document.createElement('div');
+    cell.className = 'cal-day other-month';
+    cell.innerHTML = '<div class="dnum">' + (prevDays - i) + '</div>';
+    grid.appendChild(cell);
+  }
+  // current month days
+  for (let d = 1; d <= daysIn; d++) {
+    const k = y + '-' + pad(m + 1) + '-' + pad(d);
+    const s = filteredSessions(sessionsFor(k), monthFilter).reduce((a, x) => a + x.seconds, 0);
+    const cell = document.createElement('div');
+    cell.className = 'cal-day' + (s > 0 ? ' has-hours' : '') + (k === todayK ? ' today' : '');
+    cell.innerHTML = '<div class="dnum">' + d + '</div>' +
+      (s > 0 ? '<div class="dhrs">' + fmtHours(s) + 'h</div>' : '');
+    if (s > 0) {
+      cell.onclick = () => { dayCursor = k; switchPage('day'); };
+      cell.title = fmtHours(s) + ' hours — tap to view';
+    }
+    grid.appendChild(cell);
+  }
+  // trailing days to complete the last row
+  const totalCells = firstDow + daysIn;
+  const trailing = (7 - (totalCells % 7)) % 7;
+  for (let d = 1; d <= trailing; d++) {
+    const cell = document.createElement('div');
+    cell.className = 'cal-day other-month';
+    cell.innerHTML = '<div class="dnum">' + d + '</div>';
+    grid.appendChild(cell);
+  }
 }
 $('monthPrev').onclick = () => { monthCursor.setMonth(monthCursor.getMonth() - 1); renderMonth(); };
 $('monthNext').onclick = () => { monthCursor.setMonth(monthCursor.getMonth() + 1); renderMonth(); };
