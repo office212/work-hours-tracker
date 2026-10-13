@@ -17,12 +17,15 @@ function getProjects() {
     settings.defaultProjectId = 'p_default';
     saveSettings(settings);
   }
-  // ensure default is valid
-  if (!settings.projects.find(p => p.id === settings.defaultProjectId)) {
-    settings.defaultProjectId = settings.projects[0].id;
-    saveSettings(settings);
+  // ensure default is valid (skip soft-deleted)
+  const active = settings.projects.filter(p => !p.deleted);
+  if (!active.find(p => p.id === settings.defaultProjectId)) {
+    if (active.length) {
+      settings.defaultProjectId = active[0].id;
+      saveSettings(settings);
+    }
   }
-  return settings.projects;
+  return active;
 }
 
 function getProject(id) {
@@ -87,8 +90,9 @@ function refreshProjectUI() {
 }
 
 function filteredSessions(list, filter) {
-  if (!filter || filter === 'all') return list;
-  return list.filter(s => s.projectId === filter);
+  const active = list.filter(s => !s.deleted);
+  if (!filter || filter === 'all') return active;
+  return active.filter(s => s.projectId === filter);
 }
 const LS_SESSIONS = 'wht_sessions_v1';
 const LS_SETTINGS = 'wht_settings_v1';
@@ -145,7 +149,9 @@ function fmtTimeInput(iso) {
   return pad(d.getHours()) + ':' + pad(d.getMinutes());
 }
 
-function sessionsFor(key) { return sessions.filter(s => s.date === key); }
+function sessionsFor(key) { return sessions.filter(s => s.date === key && !s.deleted); }
+// Helper: only non-deleted sessions for display and stats
+function activeSessions() { return sessions.filter(s => !s.deleted); }
 function totalFor(key) { return sessionsFor(key).reduce((a, s) => a + s.seconds, 0); }
 
 function weekStart(date) {
@@ -203,7 +209,7 @@ function showGate() {
   $('googleBtnWrap').style.display = hasId ? '' : 'none';
 }
 
-const REDIRECT_URI = 'https://office212.github.io/work-hours-tracker/';
+const REDIRECT_URI = window.location.origin + window.location.pathname;
 
 // Direct OAuth redirect: plain page navigation, never a popup
 function startGoogleSignIn() {
@@ -301,6 +307,10 @@ $('btnSaveClientId').onclick = () => {
   toast('Saved. Now sign in with Google.');
 };
 
+$('btnReconnect').onclick = () => {
+  startGoogleSignIn();
+};
+
 $('btnGoogleOut').onclick = async () => {
   if (gToken) {
     try { await fetch('https://oauth2.googleapis.com/revoke?token=' + gToken, { method: 'POST' }); } catch (e) {}
@@ -319,12 +329,15 @@ async function dFetch(url, opts) {
   opts.headers = Object.assign({}, opts.headers, { Authorization: 'Bearer ' + gToken });
   const r = await fetch(url, opts);
   if (r.status === 401) {
-    // token expired mid-session: clear it so the next load asks for a fresh sign-in
+    // token expired mid-session: don't lock the app, just mark sync as disconnected
+    // user keeps working locally; they can reconnect from the Account tab
     gToken = null;
     saveToken(null);
-    setSyncUI('off');
-    showGate();
-    toast('Session expired, please sign in again');
+    stopAutoSync();
+    setSyncUI('error');
+    lastSyncError = 'Session expired. Tap "Reconnect" in the Account tab to resume sync.';
+    updateSyncStatus();
+    toast('Sync disconnected, please reconnect in Account tab');
   }
   if (!r.ok) throw new Error('Drive API ' + r.status);
   const ct = r.headers.get('content-type') || '';
@@ -360,10 +373,17 @@ async function drivePull() {
         });
         sessions = Object.values(byId).sort((a, b) => a.start.localeCompare(b.start));
         saveSessions(sessions);
-        // merge projects and day notes
+        // merge projects and day notes (respect soft deletes via updatedAt)
         if (Array.isArray(cloud.projects) && cloud.projects.length) {
-          const existing = new Set(getProjects().map(p => p.id));
-          cloud.projects.forEach(p => { if (!existing.has(p.id)) settings.projects.push(p); });
+          const byId = {};
+          settings.projects.forEach(p => byId[p.id] = p);
+          cloud.projects.forEach(p => {
+            const local = byId[p.id];
+            if (!local || (p.updatedAt && local.updatedAt && p.updatedAt > local.updatedAt) || !local.updatedAt) {
+              byId[p.id] = p;
+            }
+          });
+          settings.projects = Object.values(byId);
           if (cloud.defaultProjectId && cloud.defaultProjectId !== settings.defaultProjectId) {
             settings.defaultProjectId = cloud.defaultProjectId;
             // reset timer selection so it follows the new default
@@ -414,12 +434,15 @@ function updateSyncStatus() {
   if (!el) return;
   const fmt = t => t ? new Date(t).toLocaleTimeString() : 'never';
   el.innerHTML =
-    'Local sessions: <b>' + sessions.length + '</b><br>' +
+    'Local sessions: <b>' + activeSessions().length + '</b><br>' +
     'Local projects: <b>' + getProjects().length + '</b> (' + getProjects().map(p => escapeHtml(p.name)).join(', ') + ')<br>' +
     'Last upload: <b>' + fmt(lastPushTime) + '</b><br>' +
     'Last download: <b>' + fmt(lastPullTime) + '</b>' +
     (lastSyncError ? '<br><span style="color:var(--danger)">Error: ' + escapeHtml(lastSyncError) + '</span>' : '') +
     (driveFileId ? '<br>Cloud file: <b>found</b>' : '<br>Cloud file: <b>not found yet</b>');
+  // Show Reconnect button when not signed in (token expired)
+  const recon = $('btnReconnect');
+  if (recon) recon.style.display = gToken ? 'none' : '';
 }
 
 function drivePush() {
@@ -553,8 +576,8 @@ function renderProjectList() {
   box.innerHTML = '';
   const defId = getDefaultProjectId();
   getProjects().forEach(p => {
-    const count = sessions.filter(s => s.projectId === p.id).length;
-    const totalHrs = fmtHours(sessions.filter(s => s.projectId === p.id).reduce((a, s) => a + s.seconds, 0));
+    const count = sessions.filter(s => s.projectId === p.id && !s.deleted).length;
+    const totalHrs = fmtHours(sessions.filter(s => s.projectId === p.id && !s.deleted).reduce((a, s) => a + s.seconds, 0));
     const row = document.createElement('div');
     row.className = 'project-row' + (p.id === defId ? ' is-default' : '');
     row.innerHTML =
@@ -592,7 +615,7 @@ function escapeHtml(t) {
 
 function deleteProject(id) {
   const p = getProject(id);
-  const count = sessions.filter(s => s.projectId === id).length;
+  const count = sessions.filter(s => s.projectId === id && !s.deleted).length;
   if (getProjects().length <= 1) { toast('Cannot delete the last project'); return; }
   const msg = count > 0
     ? 'Delete "' + p.name + '"? Its ' + count + ' sessions will move to the default project.'
@@ -601,8 +624,10 @@ function deleteProject(id) {
   const defId = settings.defaultProjectId === id
     ? getProjects().find(x => x.id !== id).id
     : settings.defaultProjectId;
-  sessions.forEach(s => { if (s.projectId === id) { s.projectId = defId; s.updatedAt = new Date().toISOString(); } });
-  settings.projects = settings.projects.filter(x => x.id !== id);
+  sessions.forEach(s => { if (s.projectId === id && !s.deleted) { s.projectId = defId; s.updatedAt = new Date().toISOString(); } });
+  // Soft delete: mark as deleted so sync propagates the deletion
+  const proj = settings.projects.find(x => x.id === id);
+  if (proj) { proj.deleted = true; proj.updatedAt = new Date().toISOString(); }
   settings.defaultProjectId = defId;
   if (timerProjectId === id) timerProjectId = defId;
   saveSettings(settings); saveSessions(sessions);
@@ -717,7 +742,9 @@ function sessionRow(s) {
   div.querySelector('.session-del').onclick = e => {
     e.stopPropagation();
     if (!confirm('Delete this session?')) return;
-    sessions = sessions.filter(x => x.id !== s.id);
+    // Soft delete: mark as deleted so sync propagates the deletion
+    s.deleted = true;
+    s.updatedAt = new Date().toISOString();
     saveSessions(sessions);
     renderAll();
     toast('Session deleted');
@@ -1136,7 +1163,7 @@ $('btnExport').onclick = () => {
 
 $('btnExportHours').onclick = () => {
   const rows = [['Date', 'Project', 'Start', 'End', 'Duration (hrs)', 'Note']];
-  sessions.slice().sort((a, b) => a.start.localeCompare(b.start)).forEach(s => {
+  sessions.filter(s => !s.deleted).slice().sort((a, b) => a.start.localeCompare(b.start)).forEach(s => {
     rows.push([
       s.date,
       getProject(s.projectId).name,

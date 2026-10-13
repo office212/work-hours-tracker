@@ -15,7 +15,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=6">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
 <!-- Login gate: no entry without Google sign-in -->
@@ -205,6 +205,7 @@
         <div class="sync-status" id="syncStatus" style="margin:12px 0;font-size:13px;color:var(--muted)"></div>
         <div class="btn-row" style="justify-content:flex-start">
           <button class="btn btn-soft" id="btnSyncNow">Sync Now</button>
+          <button class="btn btn-soft" id="btnReconnect" style="display:none">Reconnect Sync</button>
           <button class="btn btn-soft" id="btnGoogleOut">Sign Out</button>
         </div>
       </div>
@@ -279,6 +280,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=19"></script>
+<script src="app.js"></script>
 </body>
 </html>
