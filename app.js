@@ -252,6 +252,7 @@ async function tryRestoreSession() {
     setSyncUI('on');
     showApp();
     renderAll();
+    startAutoSync();
   } catch (e) {
     // token expired: clear it, user signs in again with one redirect (no popup)
     console.warn('Saved token invalid', e);
@@ -272,6 +273,7 @@ async function completeLogin(token) {
     setSyncUI('on');
     showApp();
     renderAll();
+    startAutoSync();
     toast('Welcome back.');
   } catch (e) {
     console.warn('Drive pull failed', e);
@@ -306,6 +308,7 @@ $('btnGoogleOut').onclick = async () => {
   gToken = null;
   saveToken(null);
   driveFileId = null;
+  stopAutoSync();
   setSyncUI('off');
   showGate();
   toast('Signed out');
@@ -375,6 +378,31 @@ function drivePush() {
   clearTimeout(pushTimer);
   pushTimer = setTimeout(uploadNow, 1500);
 }
+
+// Periodic background sync: pull changes from other devices
+let syncInterval = null;
+function startAutoSync() {
+  stopAutoSync();
+  // pull every 30 seconds while signed in
+  syncInterval = setInterval(async () => {
+    if (!gToken || document.hidden) return;
+    try { await drivePull(); } catch (e) { console.warn('Auto-sync pull failed', e); }
+  }, 30000);
+}
+function stopAutoSync() {
+  if (syncInterval) { clearInterval(syncInterval); syncInterval = null; }
+}
+// pull when tab becomes visible or window regains focus
+document.addEventListener('visibilitychange', async () => {
+  if (!document.hidden && gToken) {
+    try { await drivePull(); } catch (e) {}
+  }
+});
+window.addEventListener('focus', async () => {
+  if (gToken) {
+    try { await drivePull(); } catch (e) {}
+  }
+});
 
 async function uploadNow() {
   if (!gToken) return;
