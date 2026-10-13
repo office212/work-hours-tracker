@@ -202,7 +202,7 @@ function showGate() {
   // show client ID field only if not configured yet
   const hasId = !!getClientId();
   $('clientIdField').style.display = hasId ? 'none' : '';
-  if (hasId) renderGoogleButton();
+  $('googleBtnWrap').style.display = hasId ? '' : 'none';
 }
 
 function makeTokenClient(clientId) {
@@ -269,33 +269,19 @@ function initGIS() {
     return;
   }
   tokenClient = makeTokenClient(getClientId());
-  if (getClientId()) renderGoogleButton();
   tryRestoreSession();
 }
 
-function renderGoogleButton() {
-  const container = $('googleBtn');
-  if (!container || !getClientId()) return;
-  container.innerHTML = '';
+// Single sign-in button: one popup for sign-in + Drive permission
+$('btnGoogleSignin').onclick = () => {
+  if (!tokenClient) { toast('Still loading, try again in a moment'); return; }
   try {
-    google.accounts.id.initialize({
-      client_id: getClientId(),
-      callback: () => {
-        // Official sign-in complete, now authorize Drive access
-        tokenClient.requestAccessToken({ prompt: 'consent' });
-      }
-    });
-    google.accounts.id.renderButton(container, {
-      theme: 'outline',
-      size: 'large',
-      text: 'signin_with',
-      shape: 'pill',
-      width: 280
-    });
+    tokenClient.requestAccessToken({ prompt: 'select_account' });
   } catch (e) {
-    console.warn('Google button render failed', e);
+    console.warn('Sign-in failed', e);
+    toast('Sign-in failed, please try again');
   }
-}
+};
 
 $('btnSaveClientId').onclick = () => {
   const cid = $('clientIdInput').value.trim();
@@ -304,7 +290,7 @@ $('btnSaveClientId').onclick = () => {
   saveSettings(settings);
   tokenClient = makeTokenClient(cid);
   $('clientIdField').style.display = 'none';
-  renderGoogleButton();
+  $('googleBtnWrap').style.display = '';
   toast('Saved. Now sign in with Google.');
 };
 

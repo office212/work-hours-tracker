@@ -656,3 +656,20 @@ main { padding: 8px 16px; display: flex; flex-direction: column; gap: 14px; }
   .cal-day .dnum { font-size: 16px; }
   .cal-day .dhrs { font-size: 12px; }
 }
+
+/* ---------- Google sign-in button ---------- */
+.google-signin-btn {
+  display: inline-flex; align-items: center; gap: 12px;
+  font-family: inherit; font-size: 15px; font-weight: 600;
+  color: #1f2937;
+  background: #fff;
+  border: 1.5px solid #dadce0;
+  border-radius: 999px;
+  padding: 12px 28px 12px 20px;
+  cursor: pointer;
+  transition: background .2s, box-shadow .2s, transform .12s;
+  box-shadow: 0 1px 3px rgba(15,23,42,.08);
+}
+.google-signin-btn:hover { background: #f8fafc; box-shadow: 0 2px 8px rgba(15,23,42,.12); }
+.google-signin-btn:active { transform: scale(.97); }
+.google-signin-btn svg { flex-shrink: 0; }
