@@ -227,7 +227,7 @@ function startGoogleSignIn() {
 // Handle the redirect back from Google (token arrives in URL hash)
 function handleRedirectResult() {
   const hash = window.location.hash;
-  if (!hash || hash.indexOf('access_token=') === -1) return false;
+  if (!hash) return false;
   const params = new URLSearchParams(hash.substring(1));
   // clean the token out of the address bar
   try { window.history.replaceState(null, '', window.location.pathname + window.location.search); } catch (e) {}
@@ -236,6 +236,7 @@ function handleRedirectResult() {
     showGate();
     return true;
   }
+  if (hash.indexOf('access_token=') === -1) return false;
   const token = params.get('access_token');
   if (token) {
     completeLogin(token);
@@ -260,13 +261,24 @@ async function tryRestoreSession() {
     renderAll();
     startAutoSync();
   } catch (e) {
-    // token expired: clear it, user signs in again with one redirect (no popup)
-    console.warn('Saved token invalid', e);
-    gToken = null;
-    saveToken(null);
-    setSyncUI('off');
-    showGate();
-    toast('Session expired, please sign in again');
+    console.warn('Restore session failed', e);
+    const msg = String((e && e.message) || e);
+    if (msg.indexOf('401') !== -1 || msg.indexOf('Drive API 401') !== -1) {
+      // token genuinely expired: clear it, user signs in again
+      gToken = null;
+      saveToken(null);
+      setSyncUI('off');
+      showGate();
+      toast('Session expired, please sign in again');
+    } else {
+      // network or other transient error: show app with local data, stay "offline"
+      setSyncUI('error');
+      lastSyncError = 'Offline mode: ' + msg;
+      showApp();
+      renderAll();
+      updateSyncStatus();
+      toast('Offline: showing local data');
+    }
   }
 }
 
@@ -277,14 +289,17 @@ async function completeLogin(token) {
   try {
     await drivePull();
     setSyncUI('on');
-    showApp();
-    renderAll();
-    startAutoSync();
-    toast('Welcome back.');
   } catch (e) {
     console.warn('Drive pull failed', e);
     setSyncUI('error');
+    lastSyncError = 'Sync failed: ' + e.message;
   }
+  // Always show the app, even if sync failed (user can work locally)
+  showApp();
+  renderAll();
+  updateSyncStatus();
+  if (gToken) startAutoSync();
+  toast('Welcome back.');
 }
 
 function initAuth() {
@@ -319,6 +334,14 @@ $('btnGoogleOut').onclick = async () => {
   saveToken(null);
   driveFileId = null;
   stopAutoSync();
+  // Privacy: clear local data so another account on this browser doesn't see it
+  sessions = [];
+  settings = {};
+  try {
+    localStorage.removeItem(LS_SESSIONS);
+    localStorage.removeItem(LS_SETTINGS);
+  } catch (e) {}
+  timerProjectId = null;
   setSyncUI('off');
   showGate();
   toast('Signed out');
@@ -358,10 +381,24 @@ async function drivePull() {
     // dFetch may return a parsed object (when content-type is JSON) or a string
     const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
     dbg('pull: downloaded ' + text.length + ' chars');
+    let cloud;
     try {
-      const cloud = typeof raw === 'string' ? JSON.parse(text) : raw;
-      dbg('pull: cloud has ' + (cloud.sessions ? cloud.sessions.length : 0) + ' sessions, ' + (cloud.projects ? cloud.projects.length : 0) + ' projects');
-      if (Array.isArray(cloud.sessions)) {
+      cloud = typeof raw === 'string' ? JSON.parse(text) : raw;
+    } catch (e) {
+      console.warn('Parse cloud data failed', e);
+      lastSyncError = 'Download parse failed';
+      // Only delete on genuine JSON parse failure (corrupt file), not on other errors.
+      // The next push will recreate it from local data.
+      try {
+        await dFetch('https://www.googleapis.com/drive/v3/files/' + driveFileId, { method: 'DELETE' });
+        console.warn('Deleted corrupt cloud file');
+      } catch (delErr) { console.warn('Could not delete corrupt file', delErr); }
+      driveFileId = null;
+      updateSyncStatus();
+      return;
+    }
+    dbg('pull: cloud has ' + (cloud.sessions ? cloud.sessions.length : 0) + ' sessions, ' + (cloud.projects ? cloud.projects.length : 0) + ' projects');
+    if (Array.isArray(cloud.sessions)) {
         // merge sessions: cloud wins on conflict by updatedAt
         const byId = {};
         sessions.forEach(s => byId[s.id] = s);
@@ -400,16 +437,6 @@ async function drivePull() {
         lastPullTime = Date.now();
         lastSyncError = null;
       }
-    } catch (e) {
-      console.warn('Parse cloud data failed', e);
-      lastSyncError = 'Download parse failed';
-      // Corrupt cloud file: delete it so the next push creates a clean one
-      try {
-        await dFetch('https://www.googleapis.com/drive/v3/files/' + driveFileId, { method: 'DELETE' });
-        console.warn('Deleted corrupt cloud file');
-      } catch (delErr) { console.warn('Could not delete corrupt file', delErr); }
-      driveFileId = null;
-    }
   } else {
     // no cloud file yet
     lastPullTime = Date.now();
@@ -630,6 +657,11 @@ function deleteProject(id) {
   if (proj) { proj.deleted = true; proj.updatedAt = new Date().toISOString(); }
   settings.defaultProjectId = defId;
   if (timerProjectId === id) timerProjectId = defId;
+  // reset any filters pointing at the deleted project
+  if (dayFilter === id) dayFilter = 'all';
+  if (weekFilter === id) weekFilter = 'all';
+  if (monthFilter === id) monthFilter = 'all';
+  if (typeof statsFilter !== 'undefined' && statsFilter === id) statsFilter = 'all';
   saveSettings(settings); saveSessions(sessions);
   refreshProjectUI(); renderAll();
   toast('Project deleted');
@@ -656,7 +688,40 @@ $('newProjectName').addEventListener('keydown', e => { if (e.key === 'Enter') $(
 let swState = 'idle';
 let swStart = 0;
 let swElapsed = 0;
+let swFirstStart = 0; // actual wall-clock time of first Start (for correct start/end display)
 let rafId = null;
+const LS_TIMER = 'wht_timer_v1';
+
+function saveTimerState() {
+  try {
+    localStorage.setItem(LS_TIMER, JSON.stringify({
+      state: swState, swStart, swElapsed, swFirstStart, timerProjectId,
+      savedAt: Date.now()
+    }));
+  } catch (e) {}
+}
+
+function restoreTimerState() {
+  try {
+    const t = JSON.parse(localStorage.getItem(LS_TIMER));
+    if (!t) return;
+    // If it was running when the page closed, resume counting from saved start
+    // (Date.now-based, so time kept passing while away)
+    if (t.state === 'running' || t.state === 'paused') {
+      swState = t.state;
+      swStart = t.swStart;
+      swElapsed = t.swElapsed;
+      swFirstStart = t.swFirstStart || t.swStart;
+      if (t.timerProjectId) timerProjectId = t.timerProjectId;
+      setState(swState);
+    }
+    // idle state needs no restore
+  } catch (e) {}
+}
+
+function clearTimerState() {
+  try { localStorage.removeItem(LS_TIMER); } catch (e) {}
+}
 
 function swTotalMs() {
   return swElapsed + (swState === 'running' ? Date.now() - swStart : 0);
@@ -673,6 +738,7 @@ function tick() {
 
 function setState(state) {
   swState = state;
+  saveTimerState();
   const pill = $('statusPill');
   const sub = $('timerSub');
   $('btnStart').classList.toggle('hidden', state !== 'idle');
@@ -696,16 +762,17 @@ function setState(state) {
   }
 }
 
-$('btnStart').onclick = () => { swStart = Date.now(); setState('running'); };
+$('btnStart').onclick = () => { swStart = Date.now(); swFirstStart = Date.now(); setState('running'); };
 $('btnPause').onclick = () => { swElapsed = swTotalMs(); setState('paused'); };
 $('btnResume').onclick = () => { swStart = Date.now(); setState('running'); };
-$('btnReset').onclick = () => { swElapsed = 0; setState('idle'); };
+$('btnReset').onclick = () => { swElapsed = 0; swFirstStart = 0; setState('idle'); clearTimerState(); };
 
 $('btnStop').onclick = async () => {
   const totalMs = swTotalMs();
   if (totalMs < 1000) { toast('Session too short to save'); return; }
   const end = new Date();
-  const start = new Date(end.getTime() - totalMs);
+  // Use actual first start time (not end - duration) so pauses don't shift it
+  const start = new Date(swFirstStart || (end.getTime() - totalMs));
   const session = {
     id: 's' + Date.now(),
     date: dateKey(start),
@@ -717,7 +784,7 @@ $('btnStop').onclick = async () => {
   };
   sessions.push(session);
   saveSessions(sessions);
-  swElapsed = 0; setState('idle');
+  swElapsed = 0; swFirstStart = 0; setState('idle'); clearTimerState();
   renderAll();
   toast('Session saved: ' + fmtHours(session.seconds) + ' hrs → ' + getProject(session.projectId).name);
   drivePush();
@@ -798,7 +865,8 @@ function updateModalDur() {
   const d = $('editDate').value, st = $('editStart').value, en = $('editEnd').value;
   if (d && st && en) {
     const start = new Date(d + 'T' + st);
-    const end = new Date(d + 'T' + en);
+    let end = new Date(d + 'T' + en);
+    if (end <= start) end = new Date(end.getTime() + 24 * 3600 * 1000); // crosses midnight
     const sec = Math.round((end - start) / 1000);
     $('editDur').textContent = sec > 0 ? 'Duration: ' + fmtHours(sec) + ' hrs' : 'End time must be after start time';
   } else {
@@ -817,7 +885,8 @@ $('btnModalSave').onclick = () => {
   const note = $('editNote').value.trim();
   if (!d || !st || !en) { toast('Fill in date, start and end time'); return; }
   const start = new Date(d + 'T' + st);
-  const end = new Date(d + 'T' + en);
+  let end = new Date(d + 'T' + en);
+  if (end <= start) end = new Date(end.getTime() + 24 * 3600 * 1000); // crosses midnight
   const sec = Math.round((end - start) / 1000);
   if (sec <= 0) { toast('End time must be after start time'); return; }
 
@@ -873,12 +942,19 @@ function renderDay() {
   $('dayTotal').textContent = fmtHours(totalSec);
   $('dayCap').textContent = fmtDateLong(dayCursor) + ' · ' + list.length + ' session' + (list.length === 1 ? '' : 's') +
     (dayFilter !== 'all' ? ' · ' + getProject(dayFilter).name : '');
-  $('dayNote').value = getDayNotes()[dayCursor] || '';
+  // Don't clobber the note field while the user is typing in it
+  if (document.activeElement !== $('dayNote')) {
+    $('dayNote').value = getDayNotes()[dayCursor] || '';
+  }
   const box = $('daySessions');
   box.innerHTML = '';
   list.forEach(s => box.appendChild(sessionRow(s)));
 }
-$('dayPicker').onchange = e => { dayCursor = e.target.value; renderDay(); };
+$('dayPicker').onchange = e => {
+  // flush any pending note save before switching days
+  clearTimeout(dayNoteTimer);
+  dayCursor = e.target.value; renderDay();
+};
 $('dayFilter').onchange = e => { dayFilter = e.target.value; renderDay(); };
 
 let dayNoteTimer = null;
@@ -1137,7 +1213,9 @@ document.querySelectorAll('.tab').forEach(t => t.onclick = () => switchPage(t.da
 /* ---------- Settings / data ---------- */
 /* ---------- Exports ---------- */
 function downloadFile(name, content, type) {
-  const blob = new Blob([content], { type });
+  // Add BOM for CSV so Excel displays non-Latin characters correctly
+  const prefix = type.indexOf('csv') !== -1 ? '﻿' : '';
+  const blob = new Blob([prefix + content], { type });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = name;
@@ -1300,7 +1378,8 @@ $('todayLabel').textContent = new Date().toLocaleDateString('en-US', { weekday: 
 $('clientIdInput').value = settings.clientId || '';
 migrateSessions();
 refreshProjectUI();
-setState('idle');
+restoreTimerState();
+if (swState === 'idle') setState('idle');
 renderAll();
 showGate();
 initAuth();
