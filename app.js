@@ -87,7 +87,9 @@ function setSyncUI(state) {
   const dot = $('syncDot');
   dot.className = 'sync-dot ' + (state === 'on' ? 'on' : 'off');
   const signedIn = state === 'on' || state === 'syncing';
-  $('btnGoogle').classList.toggle('hidden', signedIn);
+  $('googleBtnWrap').style.display = signedIn ? 'none' : 'flex';
+  const scb = $('btnSaveClientId');
+  if (scb) scb.style.display = signedIn ? 'none' : '';
   $('btnGoogleOut').classList.toggle('hidden', !signedIn);
   const labels = {
     off: 'Not signed in. Data stays on this device only.',
@@ -120,14 +122,46 @@ function initGIS() {
       }
     }
   });
+  if (settings.clientId) renderGoogleButton();
 }
 
-$('btnGoogle').onclick = () => {
+function renderGoogleButton() {
+  const container = $('googleBtn');
+  if (!container || !settings.clientId) return;
+  container.innerHTML = '';
+  try {
+    google.accounts.id.initialize({
+      client_id: settings.clientId,
+      callback: () => {
+        // Official sign-in complete, now authorize Drive access
+        tokenClient.requestAccessToken({ prompt: 'consent' });
+      }
+    });
+    google.accounts.id.renderButton(container, {
+      theme: 'outline',
+      size: 'large',
+      text: 'signin_with',
+      shape: 'pill',
+      width: 280
+    });
+  } catch (e) {
+    console.warn('Google button render failed', e);
+  }
+}
+
+$('btnSaveClientId').onclick = () => {
   const cid = $('clientIdInput').value.trim();
   if (!cid) { toast('Enter your Google OAuth Client ID first'); return; }
   settings.clientId = cid;
   saveSettings(settings);
-  tokenClient.requestAccessToken({ prompt: 'consent' });
+  // re-init token client with new ID
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: cid,
+    scope: DRIVE_SCOPE,
+    callback: tokenClient.callback
+  });
+  renderGoogleButton();
+  toast('Client ID saved. Now sign in with Google below.');
 };
 
 $('btnGoogleOut').onclick = () => {
