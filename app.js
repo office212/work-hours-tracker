@@ -1050,6 +1050,90 @@ $('btnClear').onclick = async () => {
   drivePush();
 };
 
+/* ---------- PWA install ---------- */
+let deferredPrompt = null;
+
+function isAppInstalled() {
+  return window.matchMedia('(display-mode: standalone)').matches ||
+    window.navigator.standalone === true;
+}
+
+function isIOS() {
+  return /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function updateInstallUI() {
+  const installed = isAppInstalled();
+  const dismissed = (() => { try { return localStorage.getItem('wh_install_dismissed') === '1'; } catch (e) { return false; } })();
+  // Banner: only if not installed, not dismissed, and browser can prompt
+  $('installBanner').classList.toggle('hidden', installed || dismissed || !deferredPrompt);
+  // Settings card: only if not installed
+  $('installCard').style.display = installed ? 'none' : '';
+  renderInstallSteps();
+}
+
+function renderInstallSteps() {
+  const box = $('installSteps');
+  if (!box) return;
+  if (deferredPrompt) {
+    box.innerHTML = '<p style="margin:8px 0 0">Tap <b>Install App</b> above — it takes one second.</p>';
+    $('btnInstall').style.display = '';
+  } else if (isIOS()) {
+    $('btnInstall').style.display = 'none';
+    box.innerHTML = '<ol>' +
+      '<li>Tap the <b>Share</b> button in Safari (square with arrow up)</li>' +
+      '<li>Scroll down and tap <b>Add to Home Screen</b></li>' +
+      '<li>Tap <b>Add</b> — done!</li></ol>';
+  } else {
+    $('btnInstall').style.display = 'none';
+    box.innerHTML = '<ol>' +
+      '<li>Tap the <b>⋮ menu</b> (top right)</li>' +
+      '<li>Tap <b>Add to Home screen</b> or <b>Install app</b></li></ol>' +
+      '<p style="margin:8px 0 0">On desktop Chrome/Edge: click the <b>install icon</b> in the address bar.</p>';
+  }
+}
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  updateInstallUI();
+});
+
+window.addEventListener('appinstalled', () => {
+  deferredPrompt = null;
+  try { localStorage.removeItem('wh_install_dismissed'); } catch (e) {}
+  updateInstallUI();
+  toast('App installed!');
+});
+
+async function triggerInstall() {
+  if (!deferredPrompt) return;
+  deferredPrompt.prompt();
+  try {
+    const choice = await deferredPrompt.userChoice;
+    if (choice.outcome === 'accepted') {
+      try { localStorage.removeItem('wh_install_dismissed'); } catch (e) {}
+    }
+  } catch (e) {}
+  deferredPrompt = null;
+  updateInstallUI();
+}
+
+$('btnInstallBanner').onclick = triggerInstall;
+$('btnInstall').onclick = triggerInstall;
+$('btnDismissBanner').onclick = () => {
+  try { localStorage.setItem('wh_install_dismissed', '1'); } catch (e) {}
+  updateInstallUI();
+};
+
+// Register service worker
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('sw.js').catch(e => console.warn('SW failed', e));
+  });
+}
+
 /* ---------- Init ---------- */
 function renderAll() {
   renderToday();
@@ -1066,3 +1150,4 @@ setState('idle');
 renderAll();
 showGate();
 initAuth();
+updateInstallUI();

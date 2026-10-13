@@ -673,3 +673,31 @@ main { padding: 8px 16px; display: flex; flex-direction: column; gap: 14px; }
 .google-signin-btn:hover { background: #f8fafc; box-shadow: 0 2px 8px rgba(15,23,42,.12); }
 .google-signin-btn:active { transform: scale(.97); }
 .google-signin-btn svg { flex-shrink: 0; }
+
+/* ---------- Install banner ---------- */
+.install-banner {
+  display: flex; align-items: center; gap: 12px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-2));
+  color: #fff;
+  border-radius: 18px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow-lg);
+  animation: fadeUp .4s ease;
+}
+.install-banner-icon { font-size: 28px; }
+.install-banner-text { flex: 1; display: flex; flex-direction: column; }
+.install-banner-text b { font-size: 15px; }
+.install-banner-text span { font-size: 12.5px; opacity: .85; }
+.install-banner .btn-small { padding: 9px 20px; font-size: 14px; background: #fff; color: var(--primary); box-shadow: none; }
+.install-dismiss {
+  border: none; background: rgba(255,255,255,.2); color: #fff;
+  width: 28px; height: 28px; border-radius: 50%;
+  font-size: 16px; cursor: pointer; line-height: 1;
+  flex-shrink: 0;
+}
+.install-dismiss:hover { background: rgba(255,255,255,.35); }
+
+.install-steps { margin-top: 12px; font-size: 14px; color: var(--muted); }
+.install-steps ol { margin: 8px 0 0; padding-left: 20px; }
+.install-steps li { margin-bottom: 6px; }
+.install-steps b { color: var(--ink); }

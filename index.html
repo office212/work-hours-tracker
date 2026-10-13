@@ -5,10 +5,17 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Work Hours Tracker</title>
 <meta name="description" content="Beautiful work hours stopwatch with daily, weekly and monthly tracking, synced across all your devices.">
+<meta name="theme-color" content="#4f46e5">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/favicon-64.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Work Hours">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=5">
+<link rel="stylesheet" href="styles.css?v=6">
 </head>
 <body>
 <!-- Login gate: no entry without Google sign-in -->
@@ -47,6 +54,17 @@
   </header>
 
   <main>
+    <!-- Install banner (only shows if app is not installed) -->
+    <div class="install-banner hidden" id="installBanner">
+      <div class="install-banner-icon">📲</div>
+      <div class="install-banner-text">
+        <b>Install as an app</b>
+        <span>Add Work Hours to your home screen for quick access</span>
+      </div>
+      <button class="btn btn-primary btn-small" id="btnInstallBanner">Install</button>
+      <button class="install-dismiss" id="btnDismissBanner" title="Dismiss">×</button>
+    </div>
+
     <!-- TIMER -->
     <section class="tab-page active" id="page-timer">
       <div class="card timer-card">
@@ -172,6 +190,15 @@
         </div>
       </div>
 
+      <div class="card" id="installCard">
+        <h2>📲 Install as an App</h2>
+        <p class="muted">Add Work Hours to your home screen. It opens full-screen, just like a real app.</p>
+        <div class="btn-row" style="justify-content:flex-start">
+          <button class="btn btn-primary" id="btnInstall">Install App</button>
+        </div>
+        <div class="install-steps" id="installSteps"></div>
+      </div>
+
       <div class="card">
         <h2>Account</h2>
         <p class="muted" id="accountInfo">Signed in with Google. Your hours are private to your account.</p>
@@ -250,6 +277,6 @@
 
 <div class="toast" id="toast"></div>
 
-<script src="app.js?v=9"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
