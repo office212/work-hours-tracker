@@ -1,7 +1,14 @@
-/* Work Hours Tracker - stopwatch, history, edit, manual entry, Supabase cloud sync */
+/* Work Hours Tracker - stopwatch, history, edit, manual entry, Google Drive sync */
 'use strict';
 
+/* Hardcoded OAuth Client ID (public by design, restricted to office212.github.io) */
+const DEFAULT_CLIENT_ID = '860448133334-4c5525pl6ok2k2mke3bgjrutmt104t0r.apps.googleusercontent.com';
+
 /* ---------- Storage ---------- */
+
+function getClientId() {
+  return settings.clientId || DEFAULT_CLIENT_ID;
+}
 const LS_SESSIONS = 'wht_sessions_v1';
 const LS_SETTINGS = 'wht_settings_v1';
 
@@ -105,7 +112,7 @@ function showGate() {
   $('mainApp').classList.add('hidden');
   $('loginGate').classList.remove('hidden');
   // show client ID field only if not configured yet
-  const hasId = !!settings.clientId;
+  const hasId = !!getClientId();
   $('clientIdField').style.display = hasId ? 'none' : '';
   if (hasId) renderGoogleButton();
 }
@@ -137,17 +144,17 @@ function initGIS() {
     setTimeout(initGIS, 500);
     return;
   }
-  tokenClient = makeTokenClient(settings.clientId || '');
-  if (settings.clientId) renderGoogleButton();
+  tokenClient = makeTokenClient(getClientId());
+  if (getClientId()) renderGoogleButton();
 }
 
 function renderGoogleButton() {
   const container = $('googleBtn');
-  if (!container || !settings.clientId) return;
+  if (!container || !getClientId()) return;
   container.innerHTML = '';
   try {
     google.accounts.id.initialize({
-      client_id: settings.clientId,
+      client_id: getClientId(),
       callback: () => {
         // Official sign-in complete, now authorize Drive access
         tokenClient.requestAccessToken({ prompt: 'consent' });
