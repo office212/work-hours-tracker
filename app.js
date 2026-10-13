@@ -168,7 +168,6 @@ const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
 const DATA_FILENAME = 'work-hours.json';
 const LS_TOKEN = 'wh_token';
 let gToken = null;
-let tokenClient = null;
 let driveFileId = null;
 
 function saveToken(t) {
@@ -204,46 +203,22 @@ function showGate() {
   $('googleBtnWrap').style.display = hasId ? '' : 'none';
 }
 
-function makeTokenClient(clientId) {
-  return google.accounts.oauth2.initTokenClient({
-    client_id: clientId,
+const REDIRECT_URI = 'https://office212.github.io/work-hours-tracker/';
+
+// Direct OAuth redirect: plain page navigation, never a popup
+function startGoogleSignIn() {
+  const params = new URLSearchParams({
+    client_id: getClientId(),
+    redirect_uri: REDIRECT_URI,
+    response_type: 'token',
     scope: DRIVE_SCOPE,
-    ux_mode: 'redirect',
-    redirect_uri: 'https://office212.github.io/work-hours-tracker/',
-    callback: async (resp) => {
-      // In redirect mode the token arrives via URL hash, not here.
-      // This handles the rare popup fallback path.
-      if (resp && resp.error) {
-        gToken = null;
-        saveToken(null);
-        setSyncUI('off');
-        showGate();
-        return;
-      }
-      if (resp && resp.access_token) {
-        await completeLogin(resp.access_token);
-      }
-    }
+    prompt: 'select_account',
+    include_granted_scopes: 'true'
   });
+  window.location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + params.toString();
 }
 
-async function completeLogin(token) {
-  gToken = token;
-  saveToken(token);
-  setSyncUI('syncing');
-  try {
-    await drivePull();
-    setSyncUI('on');
-    showApp();
-    renderAll();
-    toast('Welcome back.');
-  } catch (e) {
-    console.warn('Drive pull failed', e);
-    setSyncUI('error');
-  }
-}
-
-// Handle the redirect back from Google (token arrives in URL hash, no popup)
+// Handle the redirect back from Google (token arrives in URL hash)
 function handleRedirectResult() {
   const hash = window.location.hash;
   if (!hash || hash.indexOf('access_token=') === -1) return false;
@@ -288,24 +263,30 @@ async function tryRestoreSession() {
   }
 }
 
-function initGIS() {
-  if (typeof google === 'undefined' || !google.accounts) {
-    setTimeout(initGIS, 500);
-    return;
+async function completeLogin(token) {
+  gToken = token;
+  saveToken(token);
+  setSyncUI('syncing');
+  try {
+    await drivePull();
+    setSyncUI('on');
+    showApp();
+    renderAll();
+    toast('Welcome back.');
+  } catch (e) {
+    console.warn('Drive pull failed', e);
+    setSyncUI('error');
   }
-  tokenClient = makeTokenClient(getClientId());
+}
+
+function initAuth() {
   tryRestoreSession();
 }
 
-// Single sign-in button: redirect to Google and back, no popup at all
+// Single sign-in button: direct redirect to Google, no popup ever
 $('btnGoogleSignin').onclick = () => {
-  if (!tokenClient) { toast('Still loading, try again in a moment'); return; }
-  try {
-    tokenClient.requestAccessToken({ prompt: 'select_account' });
-  } catch (e) {
-    console.warn('Sign-in failed', e);
-    toast('Sign-in failed, please try again');
-  }
+  if (!getClientId()) { toast('Still loading, try again in a moment'); return; }
+  startGoogleSignIn();
 };
 
 $('btnSaveClientId').onclick = () => {
@@ -313,15 +294,14 @@ $('btnSaveClientId').onclick = () => {
   if (!cid) { toast('Enter your Google OAuth Client ID first'); return; }
   settings.clientId = cid;
   saveSettings(settings);
-  tokenClient = makeTokenClient(cid);
   $('clientIdField').style.display = 'none';
   $('googleBtnWrap').style.display = '';
   toast('Saved. Now sign in with Google.');
 };
 
-$('btnGoogleOut').onclick = () => {
-  if (gToken && typeof google !== 'undefined') {
-    try { google.accounts.oauth2.revoke(gToken, () => {}); } catch (e) {}
+$('btnGoogleOut').onclick = async () => {
+  if (gToken) {
+    try { await fetch('https://oauth2.googleapis.com/revoke?token=' + gToken, { method: 'POST' }); } catch (e) {}
   }
   gToken = null;
   saveToken(null);
@@ -1085,4 +1065,4 @@ refreshProjectUI();
 setState('idle');
 renderAll();
 showGate();
-initGIS();
+initAuth();
