@@ -9,6 +9,85 @@ const DEFAULT_CLIENT_ID = '860448133334-4c5525pl6ok2k2mke3bgjrutmt104t0r.apps.go
 function getClientId() {
   return settings.clientId || DEFAULT_CLIENT_ID;
 }
+
+/* ---------- Projects ---------- */
+function getProjects() {
+  if (!settings.projects || !settings.projects.length) {
+    settings.projects = [{ id: 'p_default', name: 'General' }];
+    settings.defaultProjectId = 'p_default';
+    saveSettings(settings);
+  }
+  // ensure default is valid
+  if (!settings.projects.find(p => p.id === settings.defaultProjectId)) {
+    settings.defaultProjectId = settings.projects[0].id;
+    saveSettings(settings);
+  }
+  return settings.projects;
+}
+
+function getProject(id) {
+  return getProjects().find(p => p.id === id) || getProjects()[0];
+}
+
+function getDefaultProjectId() {
+  getProjects();
+  return settings.defaultProjectId;
+}
+
+// migrate old sessions without projectId
+function migrateSessions() {
+  const defId = getDefaultProjectId();
+  let changed = false;
+  sessions.forEach(s => {
+    if (!s.projectId) { s.projectId = defId; changed = true; }
+  });
+  if (changed) saveSessions(sessions);
+}
+
+let timerProjectId = null; // current selection on timer tab
+function getTimerProjectId() {
+  if (!timerProjectId || !getProject(timerProjectId)) {
+    timerProjectId = getDefaultProjectId();
+  }
+  return timerProjectId;
+}
+
+let dayFilter = 'all', weekFilter = 'all', monthFilter = 'all';
+
+function fillProjectSelect(sel, includeAll) {
+  const cur = sel.value;
+  sel.innerHTML = '';
+  if (includeAll) {
+    const o = document.createElement('option');
+    o.value = 'all'; o.textContent = 'All Projects';
+    sel.appendChild(o);
+  }
+  getProjects().forEach(p => {
+    const o = document.createElement('option');
+    o.value = p.id;
+    o.textContent = p.name + (p.id === getDefaultProjectId() ? ' ★' : '');
+    sel.appendChild(o);
+  });
+  if (cur) sel.value = cur;
+}
+
+function refreshProjectUI() {
+  fillProjectSelect($('timerProject'), false);
+  $('timerProject').value = getTimerProjectId();
+  fillProjectSelect($('editProject'), false);
+  fillProjectSelect($('dayFilter'), true);
+  $('dayFilter').value = dayFilter;
+  fillProjectSelect($('weekFilter'), true);
+  $('weekFilter').value = weekFilter;
+  fillProjectSelect($('monthFilter'), true);
+  $('monthFilter').value = monthFilter;
+  renderProjectList();
+}
+
+function filteredSessions(list, filter) {
+  if (!filter || filter === 'all') return list;
+  return list.filter(s => s.projectId === filter);
+}
 const LS_SESSIONS = 'wht_sessions_v1';
 const LS_SETTINGS = 'wht_settings_v1';
 
@@ -214,7 +293,7 @@ async function drivePull() {
     try {
       const cloud = JSON.parse(text);
       if (Array.isArray(cloud.sessions)) {
-        // merge: cloud wins on conflict by updatedAt
+        // merge sessions: cloud wins on conflict by updatedAt
         const byId = {};
         sessions.forEach(s => byId[s.id] = s);
         cloud.sessions.forEach(s => {
@@ -225,6 +304,18 @@ async function drivePull() {
         });
         sessions = Object.values(byId).sort((a, b) => a.start.localeCompare(b.start));
         saveSessions(sessions);
+        // merge projects and day notes
+        if (Array.isArray(cloud.projects) && cloud.projects.length) {
+          const existing = new Set(getProjects().map(p => p.id));
+          cloud.projects.forEach(p => { if (!existing.has(p.id)) settings.projects.push(p); });
+          if (cloud.defaultProjectId) settings.defaultProjectId = cloud.defaultProjectId;
+        }
+        if (cloud.dayNotes && typeof cloud.dayNotes === 'object') {
+          settings.dayNotes = Object.assign({}, cloud.dayNotes, getDayNotes());
+        }
+        saveSettings(settings);
+        migrateSessions();
+        refreshProjectUI();
         renderAll();
       }
     } catch (e) { console.warn('Parse cloud data failed', e); }
@@ -242,7 +333,13 @@ function drivePush() {
 async function uploadNow() {
   if (!gToken) return;
   try {
-    const payload = JSON.stringify({ sessions, exportedAt: new Date().toISOString() });
+    const payload = JSON.stringify({
+      sessions,
+      projects: getProjects(),
+      defaultProjectId: getDefaultProjectId(),
+      dayNotes: getDayNotes(),
+      exportedAt: new Date().toISOString()
+    });
     const metadata = { name: DATA_FILENAME, parents: ['appDataFolder'] };
     const boundary = 'wht' + Date.now();
     const body =
@@ -276,6 +373,87 @@ async function uploadNow() {
     console.warn('Drive push failed', e);
   }
 }
+
+/* ---------- Projects settings UI ---------- */
+function renderProjectList() {
+  const box = $('projectList');
+  if (!box) return;
+  box.innerHTML = '';
+  const defId = getDefaultProjectId();
+  getProjects().forEach(p => {
+    const count = sessions.filter(s => s.projectId === p.id).length;
+    const totalHrs = fmtHours(sessions.filter(s => s.projectId === p.id).reduce((a, s) => a + s.seconds, 0));
+    const row = document.createElement('div');
+    row.className = 'project-row' + (p.id === defId ? ' is-default' : '');
+    row.innerHTML =
+      '<div><div class="project-name">' + escapeHtml(p.name) +
+      (p.id === defId ? '<span class="default-badge">Default</span>' : '') + '</div>' +
+      '<div class="project-meta">' + count + ' sessions · ' + totalHrs + ' hrs</div></div>' +
+      '<div class="project-actions"></div>';
+    const acts = row.querySelector('.project-actions');
+    if (p.id !== defId) {
+      const bDef = document.createElement('button');
+      bDef.className = 'primary'; bDef.textContent = 'Set default';
+      bDef.onclick = () => {
+        settings.defaultProjectId = p.id;
+        saveSettings(settings);
+        timerProjectId = p.id;
+        refreshProjectUI(); renderAll();
+        toast('"' + p.name + '" is now the default project');
+        drivePush();
+      };
+      acts.appendChild(bDef);
+    }
+    const bDel = document.createElement('button');
+    bDel.className = 'danger'; bDel.textContent = 'Delete';
+    bDel.onclick = () => deleteProject(p.id);
+    acts.appendChild(bDel);
+    box.appendChild(row);
+  });
+}
+
+function escapeHtml(t) {
+  const d = document.createElement('div');
+  d.textContent = t;
+  return d.innerHTML;
+}
+
+function deleteProject(id) {
+  const p = getProject(id);
+  const count = sessions.filter(s => s.projectId === id).length;
+  if (getProjects().length <= 1) { toast('Cannot delete the last project'); return; }
+  const msg = count > 0
+    ? 'Delete "' + p.name + '"? Its ' + count + ' sessions will move to the default project.'
+    : 'Delete "' + p.name + '"?';
+  if (!confirm(msg)) return;
+  const defId = settings.defaultProjectId === id
+    ? getProjects().find(x => x.id !== id).id
+    : settings.defaultProjectId;
+  sessions.forEach(s => { if (s.projectId === id) { s.projectId = defId; s.updatedAt = new Date().toISOString(); } });
+  settings.projects = settings.projects.filter(x => x.id !== id);
+  settings.defaultProjectId = defId;
+  if (timerProjectId === id) timerProjectId = defId;
+  saveSettings(settings); saveSessions(sessions);
+  refreshProjectUI(); renderAll();
+  toast('Project deleted');
+  drivePush();
+}
+
+$('btnAddProject').onclick = () => {
+  const name = $('newProjectName').value.trim();
+  if (!name) { toast('Enter a project name'); return; }
+  if (getProjects().some(p => p.name.toLowerCase() === name.toLowerCase())) {
+    toast('A project with this name already exists'); return;
+  }
+  const p = { id: 'p' + Date.now(), name };
+  settings.projects.push(p);
+  saveSettings(settings);
+  $('newProjectName').value = '';
+  refreshProjectUI();
+  toast('Project "' + name + '" added');
+  drivePush();
+};
+$('newProjectName').addEventListener('keydown', e => { if (e.key === 'Enter') $('btnAddProject').click(); });
 
 /* ---------- Stopwatch ---------- */
 let swState = 'idle';
@@ -328,7 +506,7 @@ $('btnReset').onclick = () => { swElapsed = 0; setState('idle'); };
 
 $('btnStop').onclick = async () => {
   const totalMs = swTotalMs();
-  if (totalMs < 60000) { toast('Session too short to save (min 1 minute)'); return; }
+  if (totalMs < 1000) { toast('Session too short to save'); return; }
   const end = new Date();
   const start = new Date(end.getTime() - totalMs);
   const session = {
@@ -336,23 +514,28 @@ $('btnStop').onclick = async () => {
     date: dateKey(start),
     start: start.toISOString(),
     end: end.toISOString(),
-    seconds: Math.round(totalMs / 1000),
+    seconds: Math.max(1, Math.round(totalMs / 1000)),
+    projectId: getTimerProjectId(),
     updatedAt: new Date().toISOString()
   };
   sessions.push(session);
   saveSessions(sessions);
   swElapsed = 0; setState('idle');
   renderAll();
-  toast('Session saved: ' + fmtHours(session.seconds) + ' hrs');
+  toast('Session saved: ' + fmtHours(session.seconds) + ' hrs → ' + getProject(session.projectId).name);
   drivePush();
 };
+
+$('timerProject').onchange = e => { timerProjectId = e.target.value; };
 
 /* ---------- Sessions: list, edit, delete ---------- */
 function sessionRow(s) {
   const div = document.createElement('div');
   div.className = 'session';
   div.innerHTML =
-    '<div class="session-time">' + fmtTime(s.start) + ' - ' + fmtTime(s.end) + '</div>' +
+    '<div class="session-time">' + fmtTime(s.start) + ' - ' + fmtTime(s.end) +
+    '<span class="session-proj">' + escapeHtml(getProject(s.projectId).name) + '</span>' +
+    (s.note ? '<small class="session-note">' + escapeHtml(s.note) + '</small>' : '') + '</div>' +
     '<div class="session-actions">' +
     '<div class="session-dur">' + fmtHours(s.seconds) + 'h</div>' +
     '<button class="session-edit" data-id="' + s.id + '" title="Edit">✎</button>' +
@@ -385,18 +568,23 @@ let editingId = null;
 
 function openModal(sessionId) {
   editingId = sessionId || null;
+  refreshProjectUI();
   if (sessionId) {
     const s = sessions.find(x => x.id === sessionId);
     if (!s) return;
     $('modalTitle').textContent = 'Edit Session';
+    $('editProject').value = s.projectId || getDefaultProjectId();
     $('editDate').value = s.date;
     $('editStart').value = fmtTimeInput(s.start);
     $('editEnd').value = fmtTimeInput(s.end);
+    $('editNote').value = s.note || '';
   } else {
     $('modalTitle').textContent = 'Add Hours';
+    $('editProject').value = getTimerProjectId();
     $('editDate').value = dayCursor || dateKey(new Date());
     $('editStart').value = '';
     $('editEnd').value = '';
+    $('editNote').value = '';
   }
   updateModalDur();
   $('modalBackdrop').classList.remove('hidden');
@@ -426,6 +614,8 @@ $('modalBackdrop').onclick = e => { if (e.target === $('modalBackdrop')) closeMo
 
 $('btnModalSave').onclick = () => {
   const d = $('editDate').value, st = $('editStart').value, en = $('editEnd').value;
+  const projId = $('editProject').value || getDefaultProjectId();
+  const note = $('editNote').value.trim();
   if (!d || !st || !en) { toast('Fill in date, start and end time'); return; }
   const start = new Date(d + 'T' + st);
   const end = new Date(d + 'T' + en);
@@ -439,6 +629,8 @@ $('btnModalSave').onclick = () => {
       s.start = start.toISOString();
       s.end = end.toISOString();
       s.seconds = sec;
+      s.projectId = projId;
+      s.note = note;
       s.updatedAt = new Date().toISOString();
       drivePush();
       toast('Session updated');
@@ -450,6 +642,8 @@ $('btnModalSave').onclick = () => {
       start: start.toISOString(),
       end: end.toISOString(),
       seconds: sec,
+      projectId: projId,
+      note: note,
       updatedAt: new Date().toISOString()
     };
     sessions.push(s);
@@ -467,16 +661,39 @@ $('btnAddManualDay').onclick = () => openModal(null);
 /* ---------- Day page ---------- */
 let dayCursor = dateKey(new Date());
 
+/* ---------- Day notes ---------- */
+function getDayNotes() {
+  if (!settings.dayNotes) { settings.dayNotes = {}; saveSettings(settings); }
+  return settings.dayNotes;
+}
+
 function renderDay() {
   $('dayPicker').value = dayCursor;
-  const list = sessionsFor(dayCursor).sort((a, b) => a.start.localeCompare(b.start));
-  $('dayTotal').textContent = fmtHours(totalFor(dayCursor));
-  $('dayCap').textContent = fmtDateLong(dayCursor) + ' · ' + list.length + ' session' + (list.length === 1 ? '' : 's');
+  const list = filteredSessions(sessionsFor(dayCursor).sort((a, b) => a.start.localeCompare(b.start)), dayFilter);
+  const totalSec = list.reduce((a, s) => a + s.seconds, 0);
+  $('dayTotal').textContent = fmtHours(totalSec);
+  $('dayCap').textContent = fmtDateLong(dayCursor) + ' · ' + list.length + ' session' + (list.length === 1 ? '' : 's') +
+    (dayFilter !== 'all' ? ' · ' + getProject(dayFilter).name : '');
+  $('dayNote').value = getDayNotes()[dayCursor] || '';
   const box = $('daySessions');
   box.innerHTML = '';
   list.forEach(s => box.appendChild(sessionRow(s)));
 }
 $('dayPicker').onchange = e => { dayCursor = e.target.value; renderDay(); };
+$('dayFilter').onchange = e => { dayFilter = e.target.value; renderDay(); };
+
+let dayNoteTimer = null;
+$('dayNote').addEventListener('input', e => {
+  clearTimeout(dayNoteTimer);
+  dayNoteTimer = setTimeout(() => {
+    const v = e.target.value.trim();
+    const notes = getDayNotes();
+    if (v) notes[dayCursor] = v;
+    else delete notes[dayCursor];
+    saveSettings(settings);
+    drivePush();
+  }, 800);
+});
 
 /* ---------- Week page ---------- */
 let weekCursor = weekStart(new Date());
@@ -495,11 +712,15 @@ function renderWeek() {
     end.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
   let weekSec = 0, maxSec = 1;
-  const secs = days.map(d => { const s = totalFor(dateKey(d)); weekSec += s; maxSec = Math.max(maxSec, s); return s; });
+  const secs = days.map(d => {
+    const s = filteredSessions(sessionsFor(dateKey(d)), weekFilter).reduce((a, x) => a + x.seconds, 0);
+    weekSec += s; maxSec = Math.max(maxSec, s); return s;
+  });
 
   $('weekTotal').textContent = fmtHours(weekSec);
   const worked = secs.filter(s => s > 0).length;
-  $('weekCap').textContent = worked + ' of 7 days worked';
+  $('weekCap').textContent = worked + ' of 7 days worked' +
+    (weekFilter !== 'all' ? ' · ' + getProject(weekFilter).name : '');
 
   const chart = $('weekChart');
   chart.innerHTML = '';
@@ -543,7 +764,7 @@ function renderMonth() {
   const todayK = dateKey(new Date());
   for (let d = 1; d <= daysIn; d++) {
     const k = y + '-' + pad(m + 1) + '-' + pad(d);
-    const s = totalFor(k);
+    const s = filteredSessions(sessionsFor(k), monthFilter).reduce((a, x) => a + x.seconds, 0);
     if (s > 0) { monthSec += s; workedDays++; }
     const dt = new Date(y, m, d);
     const r = document.createElement('div');
@@ -555,10 +776,13 @@ function renderMonth() {
     rows.appendChild(r);
   }
   $('monthTotal').textContent = fmtHours(monthSec);
-  $('monthCap').textContent = workedDays + ' day' + (workedDays === 1 ? '' : 's') + ' worked';
+  $('monthCap').textContent = workedDays + ' day' + (workedDays === 1 ? '' : 's') + ' worked' +
+    (monthFilter !== 'all' ? ' · ' + getProject(monthFilter).name : '');
 }
 $('monthPrev').onclick = () => { monthCursor.setMonth(monthCursor.getMonth() - 1); renderMonth(); };
 $('monthNext').onclick = () => { monthCursor.setMonth(monthCursor.getMonth() + 1); renderMonth(); };
+$('weekFilter').onchange = e => { weekFilter = e.target.value; renderWeek(); };
+$('monthFilter').onchange = e => { monthFilter = e.target.value; renderMonth(); };
 
 /* ---------- Navigation ---------- */
 function switchPage(name) {
@@ -572,14 +796,62 @@ function switchPage(name) {
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => switchPage(t.dataset.page));
 
 /* ---------- Settings / data ---------- */
-$('btnExport').onclick = () => {
-  const blob = new Blob([JSON.stringify(sessions, null, 2)], { type: 'application/json' });
+/* ---------- Exports ---------- */
+function downloadFile(name, content, type) {
+  const blob = new Blob([content], { type });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'work-hours-backup.json';
+  a.download = name;
   a.click();
-  URL.revokeObjectURL(a.href);
-  toast('Backup downloaded');
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function csvEsc(v) {
+  v = String(v == null ? '' : v);
+  return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+}
+
+$('btnExport').onclick = () => {
+  downloadFile('work-hours-backup.json', JSON.stringify({
+    sessions,
+    projects: getProjects(),
+    defaultProjectId: getDefaultProjectId(),
+    dayNotes: getDayNotes(),
+    exportedAt: new Date().toISOString()
+  }, null, 2), 'application/json');
+  toast('Full backup downloaded');
+};
+
+$('btnExportHours').onclick = () => {
+  const rows = [['Date', 'Project', 'Start', 'End', 'Duration (hrs)', 'Note']];
+  sessions.slice().sort((a, b) => a.start.localeCompare(b.start)).forEach(s => {
+    rows.push([
+      s.date,
+      getProject(s.projectId).name,
+      fmtTime(s.start),
+      fmtTime(s.end),
+      fmtHours(s.seconds),
+      s.note || ''
+    ]);
+  });
+  downloadFile('work-hours.csv', rows.map(r => r.map(csvEsc).join(',')).join('\n'), 'text/csv');
+  toast('Hours exported (CSV)');
+};
+
+$('btnExportNotes').onclick = () => {
+  const rows = [['Date', 'Type', 'Project / Time', 'Note']];
+  // day notes
+  Object.keys(getDayNotes()).sort().forEach(k => {
+    const n = getDayNotes()[k];
+    if (n) rows.push([k, 'Day', '', n]);
+  });
+  // session notes
+  sessions.slice().sort((a, b) => a.start.localeCompare(b.start)).forEach(s => {
+    if (s.note) rows.push([s.date, 'Session', getProject(s.projectId).name + ' ' + fmtTime(s.start) + '-' + fmtTime(s.end), s.note]);
+  });
+  if (rows.length === 1) { toast('No notes to export'); return; }
+  downloadFile('work-notes.csv', rows.map(r => r.map(csvEsc).join(',')).join('\n'), 'text/csv');
+  toast('Notes exported (CSV)');
 };
 
 $('btnClear').onclick = async () => {
@@ -602,6 +874,8 @@ function renderAll() {
 
 $('todayLabel').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 $('clientIdInput').value = settings.clientId || '';
+migrateSessions();
+refreshProjectUI();
 setState('idle');
 renderAll();
 showGate();

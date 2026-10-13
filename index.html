@@ -50,6 +50,9 @@
       <div class="card timer-card">
         <div class="status-pill" id="statusPill">Ready</div>
         <div class="timer-display" id="timerDisplay">00:00:00</div>
+        <div class="project-select-wrap">
+          <select id="timerProject" class="project-select"></select>
+        </div>
         <div class="timer-sub" id="timerSub">Tap start to begin tracking</div>
         <div class="btn-row">
           <button class="btn btn-primary" id="btnStart">Start</button>
@@ -77,11 +80,18 @@
       <div class="card">
         <div class="card-head">
           <h2>Daily Log</h2>
-          <input type="date" id="dayPicker" class="date-input">
+          <div class="head-controls">
+            <select id="dayFilter" class="filter-select"></select>
+            <input type="date" id="dayPicker" class="date-input">
+          </div>
         </div>
         <div class="summary-hero">
           <div class="summary-num"><span id="dayTotal">0.00</span><small> hrs</small></div>
           <div class="summary-cap" id="dayCap"></div>
+        </div>
+        <div class="field day-note-field">
+          <label>Day Note <span class="muted">(optional)</span></label>
+          <textarea id="dayNote" rows="2" placeholder="Add a note for this day..."></textarea>
         </div>
         <div class="session-list" id="daySessions"></div>
         <div class="btn-row" style="margin-top:14px">
@@ -97,6 +107,9 @@
           <button class="btn btn-ghost btn-icon" id="weekPrev">‹</button>
           <h2 id="weekLabel">This Week</h2>
           <button class="btn btn-ghost btn-icon" id="weekNext">›</button>
+        </div>
+        <div class="filter-row">
+          <select id="weekFilter" class="filter-select"></select>
         </div>
         <div class="summary-hero">
           <div class="summary-num"><span id="weekTotal">0.00</span><small> hrs</small></div>
@@ -115,6 +128,9 @@
           <h2 id="monthLabel"></h2>
           <button class="btn btn-ghost btn-icon" id="monthNext">›</button>
         </div>
+        <div class="filter-row">
+          <select id="monthFilter" class="filter-select"></select>
+        </div>
         <div class="summary-hero">
           <div class="summary-num"><span id="monthTotal">0.00</span><small> hrs</small></div>
           <div class="summary-cap" id="monthCap"></div>
@@ -126,6 +142,16 @@
     <!-- SETTINGS -->
     <section class="tab-page" id="page-settings">
       <div class="card">
+        <h2>Projects</h2>
+        <p class="muted">Organize hours by project. Pick a default; you can change it anytime.</p>
+        <div class="project-list" id="projectList"></div>
+        <div class="add-project-row">
+          <input type="text" id="newProjectName" placeholder="New project name" maxlength="40">
+          <button class="btn btn-primary" id="btnAddProject">Add</button>
+        </div>
+      </div>
+
+      <div class="card">
         <h2>Account</h2>
         <p class="muted" id="accountInfo">Signed in with Google. Your hours are private to your account.</p>
         <div class="btn-row">
@@ -135,9 +161,13 @@
 
       <div class="card">
         <h2>Data</h2>
-        <p class="muted">Export a backup of all sessions anytime.</p>
+        <p class="muted">Export your hours and notes. Everything is included in the full backup.</p>
         <div class="btn-row">
-          <button class="btn btn-soft" id="btnExport">Export JSON</button>
+          <button class="btn btn-soft" id="btnExportHours">Hours (CSV)</button>
+          <button class="btn btn-soft" id="btnExportNotes">Notes (CSV)</button>
+        </div>
+        <div class="btn-row" style="margin-top:8px">
+          <button class="btn btn-soft" id="btnExport">Full Backup (JSON)</button>
           <button class="btn btn-danger-ghost" id="btnClear">Clear All Data</button>
         </div>
       </div>
@@ -167,6 +197,10 @@
   <div class="modal">
     <h2 id="modalTitle">Edit Session</h2>
     <div class="field">
+      <label>Project</label>
+      <select id="editProject" class="project-select"></select>
+    </div>
+    <div class="field">
       <label>Date</label>
       <input type="date" id="editDate">
     </div>
@@ -179,6 +213,10 @@
         <label>End</label>
         <input type="time" id="editEnd">
       </div>
+    </div>
+    <div class="field">
+      <label>Note <span class="muted">(optional)</span></label>
+      <textarea id="editNote" rows="2" placeholder="Add a note for this session..."></textarea>
     </div>
     <div class="modal-dur muted" id="editDur"></div>
     <div class="btn-row">
