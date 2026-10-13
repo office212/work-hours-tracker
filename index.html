@@ -9,6 +9,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 <div class="app">
@@ -107,20 +108,16 @@
     <section class="tab-page" id="page-settings">
       <div class="card">
         <h2>Cloud Sync</h2>
-        <p class="muted">Sync your hours across all devices and browsers. Your data is stored securely in your own database and loads everywhere you sign in.</p>
+        <p class="muted">Sign in with Google to keep your hours private and synced across all devices and browsers. Data is stored in a private folder in your own Google Drive that only this app can access.</p>
         <div class="field">
-          <label>Supabase Project URL</label>
-          <input type="text" id="sbUrlInput" placeholder="https://xyz.supabase.co" autocomplete="off">
-        </div>
-        <div class="field">
-          <label>Supabase Anon Key</label>
-          <input type="text" id="sbKeyInput" placeholder="eyJ..." autocomplete="off">
+          <label>Google OAuth Client ID</label>
+          <input type="text" id="clientIdInput" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off">
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary" id="btnSbConnect">Connect &amp; Sync</button>
-          <button class="btn btn-soft hidden" id="btnSbDisconnect">Disconnect</button>
+          <button class="btn btn-primary" id="btnGoogle">Sign in with Google</button>
+          <button class="btn btn-soft hidden" id="btnGoogleOut">Sign Out</button>
         </div>
-        <div class="sync-status muted" id="syncStatus">Not connected. Data stays on this device only.</div>
+        <div class="sync-status muted" id="syncStatus">Not signed in. Data stays on this device only.</div>
       </div>
 
       <div class="card">
@@ -135,20 +132,10 @@
       <div class="card">
         <h2>Setup Help</h2>
         <ol class="help-list">
-          <li>Create a free project at <b>supabase.com</b>.</li>
-          <li>In the SQL Editor, run:<br>
-            <code class="sql">create table sessions (
-  id text primary key,
-  date text not null,
-  start_time timestamptz not null,
-  end_time timestamptz not null,
-  seconds integer not null,
-  updated_at timestamptz default now()
-);</code>
-          </li>
-          <li>Disable Row Level Security for the <b>sessions</b> table, or add an open policy.</li>
-          <li>Copy the <b>Project URL</b> and <b>anon key</b> from Project Settings, paste them above and tap <b>Connect &amp; Sync</b>.</li>
-          <li>Repeat step 4 on every device or browser. Everything stays in sync.</li>
+          <li>Create a project in the <b>Google Cloud Console</b> and enable the <b>Google Drive API</b>.</li>
+          <li>Create an <b>OAuth 2.0 Client ID</b> (Web application) and add this site as an authorized JavaScript origin.</li>
+          <li>Paste the Client ID above and tap <b>Sign in with Google</b>.</li>
+          <li>On every other device or browser, paste the same Client ID and sign in with the same Google account. Everything stays in sync and private.</li>
         </ol>
       </div>
     </section>

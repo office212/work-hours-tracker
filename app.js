@@ -75,130 +75,153 @@ function toast(msg) {
   t._h = setTimeout(() => t.classList.remove('show'), 2600);
 }
 
-/* ---------- Supabase cloud sync ---------- */
-function sbConfigured() {
-  return !!(settings.sbUrl && settings.sbKey);
-}
-
-function sbHeaders() {
-  return {
-    'apikey': settings.sbKey,
-    'Authorization': 'Bearer ' + settings.sbKey,
-    'Content-Type': 'application/json',
-    'Prefer': 'return=representation'
-  };
-}
+/* ---------- Google Drive sync (private appDataFolder) ---------- */
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata';
+const DATA_FILENAME = 'work-hours.json';
+let gToken = null;
+let tokenClient = null;
+let driveFileId = null;
 
 function setSyncUI(state) {
   // state: 'off' | 'on' | 'syncing' | 'error'
   const dot = $('syncDot');
-  dot.className = 'sync-dot ' + (state === 'on' ? 'on' : state === 'syncing' ? 'on' : 'off');
-  const connected = state === 'on' || state === 'syncing';
-  $('btnSbConnect').classList.toggle('hidden', connected);
-  $('btnSbDisconnect').classList.toggle('hidden', !connected);
+  dot.className = 'sync-dot ' + (state === 'on' ? 'on' : 'off');
+  const signedIn = state === 'on' || state === 'syncing';
+  $('btnGoogle').classList.toggle('hidden', signedIn);
+  $('btnGoogleOut').classList.toggle('hidden', !signedIn);
   const labels = {
-    off: 'Not connected. Data stays on this device only.',
-    on: 'Connected. Data syncs across all your devices.',
+    off: 'Not signed in. Data stays on this device only.',
+    on: 'Signed in. Data syncs privately across all your devices.',
     syncing: 'Syncing...',
-    error: 'Connection failed. Check URL and key.'
+    error: 'Sync failed. Try signing in again.'
   };
   $('syncStatus').textContent = labels[state] || labels.off;
 }
 
-async function sbPull() {
-  if (!sbConfigured()) return;
-  setSyncUI('syncing');
-  try {
-    const r = await fetch(settings.sbUrl.replace(/\/$/, '') + '/rest/v1/sessions?select=*&order=start_time.asc', {
-      headers: sbHeaders()
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const rows = await r.json();
-    // merge: cloud wins on conflict (by updated_at)
-    const byId = {};
-    sessions.forEach(s => byId[s.id] = s);
-    rows.forEach(row => {
-      const s = {
-        id: row.id,
-        date: row.date,
-        start: row.start_time,
-        end: row.end_time,
-        seconds: row.seconds,
-        updatedAt: row.updated_at
-      };
-      const local = byId[s.id];
-      if (!local || (s.updatedAt && local.updatedAt && s.updatedAt > local.updatedAt) || !local.updatedAt) {
-        byId[s.id] = s;
+function initGIS() {
+  if (typeof google === 'undefined' || !google.accounts) {
+    setTimeout(initGIS, 500);
+    return;
+  }
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: settings.clientId || '',
+    scope: DRIVE_SCOPE,
+    callback: async (resp) => {
+      if (resp.error) { toast('Google sign-in failed'); setSyncUI('off'); return; }
+      gToken = resp.access_token;
+      setSyncUI('syncing');
+      try {
+        await drivePull();
+        setSyncUI('on');
+        toast('Signed in. Data synced.');
+      } catch (e) {
+        console.warn('Drive pull failed', e);
+        setSyncUI('error');
       }
-    });
-    sessions = Object.values(byId).sort((a, b) => a.start.localeCompare(b.start));
-    saveSessions(sessions);
-    setSyncUI('on');
-    renderAll();
-  } catch (e) {
-    console.warn('Pull failed', e);
-    setSyncUI('error');
-  }
+    }
+  });
 }
 
-async function sbPush(session) {
-  if (!sbConfigured()) return;
-  try {
-    const base = settings.sbUrl.replace(/\/$/, '');
-    const body = {
-      id: session.id,
-      date: session.date,
-      start_time: session.start,
-      end_time: session.end,
-      seconds: session.seconds,
-      updated_at: new Date().toISOString()
-    };
-    session.updatedAt = body.updated_at;
-    const r = await fetch(base + '/rest/v1/sessions', {
-      method: 'POST',
-      headers: Object.assign({}, sbHeaders(), { 'Prefer': 'resolution=merge-duplicates,return=representation' }),
-      body: JSON.stringify(body)
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    saveSessions(sessions);
-  } catch (e) {
-    console.warn('Push failed', e);
-    toast('Saved locally. Cloud sync failed.');
-  }
-}
-
-async function sbDelete(id) {
-  if (!sbConfigured()) return;
-  try {
-    const r = await fetch(settings.sbUrl.replace(/\/$/, '') + '/rest/v1/sessions?id=eq.' + encodeURIComponent(id), {
-      method: 'DELETE',
-      headers: sbHeaders()
-    });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-  } catch (e) {
-    console.warn('Delete failed', e);
-  }
-}
-
-$('btnSbConnect').onclick = async () => {
-  const url = $('sbUrlInput').value.trim().replace(/\/$/, '');
-  const key = $('sbKeyInput').value.trim();
-  if (!url || !key) { toast('Enter both the Project URL and Anon Key'); return; }
-  settings.sbUrl = url;
-  settings.sbKey = key;
+$('btnGoogle').onclick = () => {
+  const cid = $('clientIdInput').value.trim();
+  if (!cid) { toast('Enter your Google OAuth Client ID first'); return; }
+  settings.clientId = cid;
   saveSettings(settings);
-  toast('Connecting...');
-  await sbPull();
-  if ($('syncDot').classList.contains('on')) toast('Connected. Data is now synced.');
+  tokenClient.requestAccessToken({ prompt: 'consent' });
 };
 
-$('btnSbDisconnect').onclick = () => {
-  settings.sbUrl = '';
-  settings.sbKey = '';
-  saveSettings(settings);
+$('btnGoogleOut').onclick = () => {
+  if (gToken && typeof google !== 'undefined') {
+    try { google.accounts.oauth2.revoke(gToken, () => {}); } catch (e) {}
+  }
+  gToken = null;
+  driveFileId = null;
   setSyncUI('off');
-  toast('Disconnected. Data stays on this device.');
+  toast('Signed out');
 };
+
+async function dFetch(url, opts) {
+  opts = opts || {};
+  opts.headers = Object.assign({}, opts.headers, { Authorization: 'Bearer ' + gToken });
+  const r = await fetch(url, opts);
+  if (!r.ok) throw new Error('Drive API ' + r.status);
+  const ct = r.headers.get('content-type') || '';
+  return ct.includes('json') ? r.json() : r.text();
+}
+
+async function drivePull() {
+  if (!gToken) return;
+  // find existing data file
+  const q = encodeURIComponent("'" + 'appDataFolder' + "' in parents and name='" + DATA_FILENAME + "' and trashed=false");
+  const list = await dFetch('https://www.googleapis.com/drive/v3/files?q=' + q + '&spaces=appDataFolder&fields=files(id,name,modifiedTime)');
+  if (list.files && list.files.length) {
+    driveFileId = list.files[0].id;
+    const text = await dFetch('https://www.googleapis.com/drive/v3/files/' + driveFileId + '?alt=media');
+    try {
+      const cloud = JSON.parse(text);
+      if (Array.isArray(cloud.sessions)) {
+        // merge: cloud wins on conflict by updatedAt
+        const byId = {};
+        sessions.forEach(s => byId[s.id] = s);
+        cloud.sessions.forEach(s => {
+          const local = byId[s.id];
+          if (!local || (s.updatedAt && local.updatedAt && s.updatedAt > local.updatedAt) || !local.updatedAt) {
+            byId[s.id] = s;
+          }
+        });
+        sessions = Object.values(byId).sort((a, b) => a.start.localeCompare(b.start));
+        saveSessions(sessions);
+        renderAll();
+      }
+    } catch (e) { console.warn('Parse cloud data failed', e); }
+  }
+}
+
+let pushTimer = null;
+function drivePush() {
+  if (!gToken) return;
+  // debounce: batch rapid changes into one upload
+  clearTimeout(pushTimer);
+  pushTimer = setTimeout(uploadNow, 1500);
+}
+
+async function uploadNow() {
+  if (!gToken) return;
+  try {
+    const payload = JSON.stringify({ sessions, exportedAt: new Date().toISOString() });
+    const metadata = { name: DATA_FILENAME, parents: ['appDataFolder'] };
+    const boundary = 'wht' + Date.now();
+    const body =
+      '--' + boundary + '\r\n' +
+      'Content-Type: application/json; charset=UTF-8\r\n\r\n' +
+      JSON.stringify(metadata) + '\r\n' +
+      '--' + boundary + '\r\n' +
+      'Content-Type: application/json\r\n\r\n' +
+      payload + '\r\n' +
+      '--' + boundary + '--';
+    let url, method;
+    if (driveFileId) {
+      url = 'https://www.googleapis.com/upload/drive/v3/files/' + driveFileId + '?uploadType=multipart';
+      method = 'PATCH';
+    } else {
+      url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+      method = 'POST';
+    }
+    const r = await fetch(url, {
+      method,
+      headers: {
+        Authorization: 'Bearer ' + gToken,
+        'Content-Type': 'multipart/related; boundary=' + boundary
+      },
+      body
+    });
+    if (!r.ok) throw new Error('Upload ' + r.status);
+    const j = await r.json();
+    driveFileId = j.id;
+  } catch (e) {
+    console.warn('Drive push failed', e);
+  }
+}
 
 /* ---------- Stopwatch ---------- */
 let swState = 'idle';
@@ -267,7 +290,7 @@ $('btnStop').onclick = async () => {
   swElapsed = 0; setState('idle');
   renderAll();
   toast('Session saved: ' + fmtHours(session.seconds) + ' hrs');
-  sbPush(session);
+  drivePush();
 };
 
 /* ---------- Sessions: list, edit, delete ---------- */
@@ -289,7 +312,7 @@ function sessionRow(s) {
     saveSessions(sessions);
     renderAll();
     toast('Session deleted');
-    sbDelete(s.id);
+    drivePush();
   };
   return div;
 }
@@ -363,7 +386,7 @@ $('btnModalSave').onclick = () => {
       s.end = end.toISOString();
       s.seconds = sec;
       s.updatedAt = new Date().toISOString();
-      sbPush(s);
+      drivePush();
       toast('Session updated');
     }
   } else {
@@ -376,7 +399,7 @@ $('btnModalSave').onclick = () => {
       updatedAt: new Date().toISOString()
     };
     sessions.push(s);
-    sbPush(s);
+    drivePush();
     toast('Hours added: ' + fmtHours(sec) + ' hrs');
   }
   saveSessions(sessions);
@@ -512,7 +535,7 @@ $('btnClear').onclick = async () => {
   saveSessions(sessions);
   renderAll();
   toast('All data cleared');
-  for (const id of ids) await sbDelete(id);
+  drivePush();
 };
 
 /* ---------- Init ---------- */
@@ -524,9 +547,8 @@ function renderAll() {
 }
 
 $('todayLabel').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-$('sbUrlInput').value = settings.sbUrl || '';
-$('sbKeyInput').value = settings.sbKey || '';
-setSyncUI(sbConfigured() ? 'on' : 'off');
+$('clientIdInput').value = settings.clientId || '';
+setSyncUI('off');
 setState('idle');
 renderAll();
-if (sbConfigured()) sbPull();
+initGIS();
