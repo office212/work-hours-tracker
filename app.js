@@ -391,7 +391,7 @@ async function drivePull() {
           }
         }
         if (cloud.dayNotes && typeof cloud.dayNotes === 'object') {
-          settings.dayNotes = Object.assign({}, cloud.dayNotes, getDayNotes());
+          settings.dayNotes = Object.assign({}, getDayNotes(), cloud.dayNotes);
         }
         saveSettings(settings);
         migrateSessions();
@@ -483,7 +483,7 @@ async function uploadNow() {
   const attemptUpload = async () => {
     const payload = JSON.stringify({
       sessions,
-      projects: getProjects(),
+      projects: settings.projects,
       defaultProjectId: getDefaultProjectId(),
       dayNotes: getDayNotes(),
       exportedAt: new Date().toISOString()
@@ -560,7 +560,7 @@ $('btnSyncNow').onclick = async () => {
     lastPullTime = Date.now();
     await uploadNow();
     lastSyncError = null;
-    toast('Sync complete: ' + sessions.length + ' sessions, ' + getProjects().length + ' projects');
+    toast('Sync complete: ' + activeSessions().length + ' sessions, ' + getProjects().length + ' projects');
   } catch (e) {
     lastSyncError = e.message;
     toast('Sync failed: ' + e.message);
@@ -888,7 +888,7 @@ $('dayNote').addEventListener('input', e => {
     const v = e.target.value.trim();
     const notes = getDayNotes();
     if (v) notes[dayCursor] = v;
-    else delete notes[dayCursor];
+    else notes[dayCursor] = '';
     saveSettings(settings);
     drivePush();
   }, 800);
@@ -1185,7 +1185,7 @@ $('btnExportNotes').onclick = () => {
     if (n) rows.push([k, 'Day', '', n]);
   });
   // session notes
-  sessions.slice().sort((a, b) => a.start.localeCompare(b.start)).forEach(s => {
+  sessions.filter(s => !s.deleted).slice().sort((a, b) => a.start.localeCompare(b.start)).forEach(s => {
     if (s.note) rows.push([s.date, 'Session', getProject(s.projectId).name + ' ' + fmtTime(s.start) + '-' + fmtTime(s.end), s.note]);
   });
   if (rows.length === 1) { toast('No notes to export'); return; }
@@ -1194,9 +1194,9 @@ $('btnExportNotes').onclick = () => {
 };
 
 $('btnClear').onclick = async () => {
-  if (!confirm('Delete ALL sessions on this device? This cannot be undone.')) return;
-  const ids = sessions.map(s => s.id);
-  sessions = [];
+  if (!confirm('Delete ALL sessions? This cannot be undone.')) return;
+  const now = new Date().toISOString();
+  sessions.forEach(s => { s.deleted = true; s.updatedAt = now; });
   saveSessions(sessions);
   renderAll();
   toast('All data cleared');
