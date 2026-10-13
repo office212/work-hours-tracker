@@ -284,6 +284,45 @@ main { padding: 8px 16px; display: flex; flex-direction: column; gap: 14px; }
 }
 .toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
+/* Modal */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(15,23,42,.45);
+  backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+  z-index: 90;
+  animation: fadeUp .25s ease;
+}
+.modal {
+  background: #fff;
+  border-radius: 24px;
+  padding: 26px;
+  width: 100%; max-width: 420px;
+  box-shadow: 0 24px 60px rgba(15,23,42,.25);
+}
+.modal h2 { margin: 0 0 6px; font-size: 19px; font-weight: 800; letter-spacing: -0.02em; }
+.field-row { display: flex; gap: 12px; }
+.field-row .field { flex: 1; }
+.modal-dur { text-align: center; font-size: 14px; font-weight: 600; margin: 4px 0 12px; }
+
+code.sql {
+  display: block;
+  background: #0f172a; color: #e2e8f0;
+  font-size: 12px; font-family: ui-monospace, monospace;
+  padding: 12px 14px; border-radius: 12px;
+  margin: 8px 0;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.session-actions { display: flex; align-items: center; gap: 2px; }
+.session-edit {
+  border: none; background: none; color: var(--faint);
+  font-size: 16px; cursor: pointer; padding: 4px 8px; border-radius: 8px;
+}
+.session-edit:hover { color: var(--primary); background: var(--primary-soft); }
+
 @media (min-width: 600px) {
   .app { padding: 24px 0 100px; }
   .topbar { padding: 8px 20px 16px; }

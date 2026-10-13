@@ -4,12 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Work Hours Tracker</title>
-<meta name="description" content="Beautiful work hours stopwatch with daily, weekly and monthly tracking, synced to Google Sheets.">
+<meta name="description" content="Beautiful work hours stopwatch with daily, weekly and monthly tracking, synced across all your devices.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="styles.css">
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 <div class="app">
@@ -47,6 +46,9 @@
           <div class="big-total"><span id="todayTotal">0.00</span><small> hrs</small></div>
         </div>
         <div class="session-list" id="todaySessions"></div>
+        <div class="btn-row" style="margin-top:14px">
+          <button class="btn btn-soft" id="btnAddManual">+ Add Hours Manually</button>
+        </div>
       </div>
     </section>
 
@@ -62,6 +64,9 @@
           <div class="summary-cap" id="dayCap"></div>
         </div>
         <div class="session-list" id="daySessions"></div>
+        <div class="btn-row" style="margin-top:14px">
+          <button class="btn btn-soft" id="btnAddManualDay">+ Add Hours Manually</button>
+        </div>
       </div>
     </section>
 
@@ -101,30 +106,26 @@
     <!-- SETTINGS -->
     <section class="tab-page" id="page-settings">
       <div class="card">
-        <h2>Google Sheets Sync</h2>
-        <p class="muted">Connect your Google account to automatically log every session into a Google Sheet, organized by day, week and month.</p>
+        <h2>Cloud Sync</h2>
+        <p class="muted">Sync your hours across all devices and browsers. Your data is stored securely in your own database and loads everywhere you sign in.</p>
         <div class="field">
-          <label>Google OAuth Client ID</label>
-          <input type="text" id="clientIdInput" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off">
+          <label>Supabase Project URL</label>
+          <input type="text" id="sbUrlInput" placeholder="https://xyz.supabase.co" autocomplete="off">
         </div>
         <div class="field">
-          <label>Spreadsheet ID <span class="muted">(optional, leave empty to create a new sheet)</span></label>
-          <input type="text" id="sheetIdInput" placeholder="1AbC..." autocomplete="off">
+          <label>Supabase Anon Key</label>
+          <input type="text" id="sbKeyInput" placeholder="eyJ..." autocomplete="off">
         </div>
         <div class="btn-row">
-          <button class="btn btn-primary" id="btnGoogle">Connect Google</button>
-          <button class="btn btn-soft hidden" id="btnDisconnect">Disconnect</button>
+          <button class="btn btn-primary" id="btnSbConnect">Connect &amp; Sync</button>
+          <button class="btn btn-soft hidden" id="btnSbDisconnect">Disconnect</button>
         </div>
-        <div class="btn-row">
-          <button class="btn btn-soft" id="btnSyncNow" disabled>Sync Now</button>
-          <a class="btn btn-ghost hidden" id="sheetLink" target="_blank" rel="noopener">Open Sheet ↗</a>
-        </div>
-        <div class="sync-status muted" id="syncStatus">Not connected</div>
+        <div class="sync-status muted" id="syncStatus">Not connected. Data stays on this device only.</div>
       </div>
 
       <div class="card">
         <h2>Data</h2>
-        <p class="muted">Your sessions are stored on this device. Export a backup anytime.</p>
+        <p class="muted">Export a backup of all sessions anytime.</p>
         <div class="btn-row">
           <button class="btn btn-soft" id="btnExport">Export JSON</button>
           <button class="btn btn-danger-ghost" id="btnClear">Clear All Data</button>
@@ -134,10 +135,20 @@
       <div class="card">
         <h2>Setup Help</h2>
         <ol class="help-list">
-          <li>Create a project in the <b>Google Cloud Console</b> and enable the <b>Google Sheets API</b>.</li>
-          <li>Create an <b>OAuth 2.0 Client ID</b> (Web application) and add this site as an authorized JavaScript origin.</li>
-          <li>Paste the Client ID above and tap <b>Connect Google</b>.</li>
-          <li>On first connect a new spreadsheet is created automatically, unless you pasted an existing Spreadsheet ID.</li>
+          <li>Create a free project at <b>supabase.com</b>.</li>
+          <li>In the SQL Editor, run:<br>
+            <code class="sql">create table sessions (
+  id text primary key,
+  date text not null,
+  start_time timestamptz not null,
+  end_time timestamptz not null,
+  seconds integer not null,
+  updated_at timestamptz default now()
+);</code>
+          </li>
+          <li>Disable Row Level Security for the <b>sessions</b> table, or add an open policy.</li>
+          <li>Copy the <b>Project URL</b> and <b>anon key</b> from Project Settings, paste them above and tap <b>Connect &amp; Sync</b>.</li>
+          <li>Repeat step 4 on every device or browser. Everything stays in sync.</li>
         </ol>
       </div>
     </section>
@@ -150,6 +161,32 @@
     <button class="tab" data-page="month"><span class="tab-ico">🗓️</span><span>Month</span></button>
     <button class="tab" data-page="settings"><span class="tab-ico">⚙️</span><span>Sync</span></button>
   </nav>
+</div>
+
+<!-- Edit / Add modal -->
+<div class="modal-backdrop hidden" id="modalBackdrop">
+  <div class="modal">
+    <h2 id="modalTitle">Edit Session</h2>
+    <div class="field">
+      <label>Date</label>
+      <input type="date" id="editDate">
+    </div>
+    <div class="field-row">
+      <div class="field">
+        <label>Start</label>
+        <input type="time" id="editStart">
+      </div>
+      <div class="field">
+        <label>End</label>
+        <input type="time" id="editEnd">
+      </div>
+    </div>
+    <div class="modal-dur muted" id="editDur"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary" id="btnModalSave">Save</button>
+      <button class="btn btn-ghost" id="btnModalCancel">Cancel</button>
+    </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>

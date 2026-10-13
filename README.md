@@ -1,35 +1,37 @@
 # Work Hours Tracker
 
-A beautiful, clean stopwatch app for tracking work hours. Start, pause, stop and save sessions. View totals by day, week and month. Optionally sync everything to Google Sheets.
+A beautiful, clean stopwatch app for tracking work hours. Start, pause, stop and save sessions. Edit or manually add past hours. View totals by day, week and month. Sync across all devices via Supabase.
 
 ## Features
 
 - **Stopwatch**: start, pause, resume, stop and save, reset
-- **Today view**: live total plus session list with delete
+- **Edit sessions**: tap the pencil on any session to change date and times
+- **Add hours manually**: log hours already worked, any date
+- **Today view**: live total plus session list
 - **Daily log**: pick any date, see sessions and total
 - **Weekly view**: bar chart plus per-day breakdown, navigate weeks
 - **Monthly view**: per-day breakdown with monthly total, navigate months
-- **Google Sheets sync**: every saved session is logged to a spreadsheet with Daily, Weekly and Monthly summary tabs
-- **Local first**: all data is stored on the device (localStorage), exportable as JSON
+- **Cloud sync**: Supabase backend keeps every device and browser in sync
+- **Local first**: works offline, data stored on device, exportable as JSON
 
-## Google Sheets setup
+## Cloud sync setup (Supabase)
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/) and create a project.
-2. Enable the **Google Sheets API** (APIs and Services > Library).
-3. Create an **OAuth 2.0 Client ID** (APIs and Services > Credentials > Create Credentials), type **Web application**.
-4. Under **Authorized JavaScript origins** add your hosted URL, e.g. `https://office212.github.io`.
-5. Copy the Client ID, open the app, go to the **Sync** tab and paste it.
-6. Tap **Connect Google**. A new spreadsheet called "Work Hours Tracker" is created automatically (or paste an existing Spreadsheet ID first).
-7. Every saved session syncs instantly. Tap **Sync Now** anytime for a full refresh.
-
-## Spreadsheet layout
-
-| Tab      | Columns                                    |
-|----------|--------------------------------------------|
-| Sessions | Date, Start Time, End Time, Duration (hrs) |
-| Daily    | Date, Total Hours, Sessions                |
-| Weekly   | Week Starting, Total Hours, Days Worked    |
-| Monthly  | Month, Total Hours, Days Worked            |
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In the SQL Editor, run:
+   ```sql
+   create table sessions (
+     id text primary key,
+     date text not null,
+     start_time timestamptz not null,
+     end_time timestamptz not null,
+     seconds integer not null,
+     updated_at timestamptz default now()
+   );
+   ```
+3. Disable Row Level Security on the `sessions` table (or add an open policy).
+4. Copy the **Project URL** and **anon key** from Project Settings.
+5. Open the app, go to the **Sync** tab, paste both, tap **Connect & Sync**.
+6. Repeat step 5 on every device or browser. All data stays in sync.
 
 ## Hosting
 
