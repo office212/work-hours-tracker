@@ -397,6 +397,7 @@ function updateSyncStatus() {
   const fmt = t => t ? new Date(t).toLocaleTimeString() : 'never';
   el.innerHTML =
     'Local sessions: <b>' + sessions.length + '</b><br>' +
+    'Local projects: <b>' + getProjects().length + '</b> (' + getProjects().map(p => escapeHtml(p.name)).join(', ') + ')<br>' +
     'Last upload: <b>' + fmt(lastPushTime) + '</b><br>' +
     'Last download: <b>' + fmt(lastPullTime) + '</b>' +
     (lastSyncError ? '<br><span style="color:var(--danger)">Error: ' + escapeHtml(lastSyncError) + '</span>' : '') +
