@@ -364,7 +364,11 @@ async function drivePull() {
         if (Array.isArray(cloud.projects) && cloud.projects.length) {
           const existing = new Set(getProjects().map(p => p.id));
           cloud.projects.forEach(p => { if (!existing.has(p.id)) settings.projects.push(p); });
-          if (cloud.defaultProjectId) settings.defaultProjectId = cloud.defaultProjectId;
+          if (cloud.defaultProjectId && cloud.defaultProjectId !== settings.defaultProjectId) {
+            settings.defaultProjectId = cloud.defaultProjectId;
+            // reset timer selection so it follows the new default
+            timerProjectId = cloud.defaultProjectId;
+          }
         }
         if (cloud.dayNotes && typeof cloud.dayNotes === 'object') {
           settings.dayNotes = Object.assign({}, cloud.dayNotes, getDayNotes());
