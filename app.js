@@ -341,10 +341,12 @@ async function drivePull() {
   if (list.files && list.files.length) {
     driveFileId = list.files[0].id;
     dbg('pull: fileId=' + driveFileId);
-    const text = await dFetch('https://www.googleapis.com/drive/v3/files/' + driveFileId + '?alt=media');
+    const raw = await dFetch('https://www.googleapis.com/drive/v3/files/' + driveFileId + '?alt=media');
+    // dFetch may return a parsed object (when content-type is JSON) or a string
+    const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
     dbg('pull: downloaded ' + text.length + ' chars');
     try {
-      const cloud = JSON.parse(text);
+      const cloud = typeof raw === 'string' ? JSON.parse(text) : raw;
       dbg('pull: cloud has ' + (cloud.sessions ? cloud.sessions.length : 0) + ' sessions, ' + (cloud.projects ? cloud.projects.length : 0) + ' projects');
       if (Array.isArray(cloud.sessions)) {
         // merge sessions: cloud wins on conflict by updatedAt
