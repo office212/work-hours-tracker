@@ -85,19 +85,51 @@ let driveFileId = null;
 function setSyncUI(state) {
   // state: 'off' | 'on' | 'syncing' | 'error'
   const dot = $('syncDot');
-  dot.className = 'sync-dot ' + (state === 'on' ? 'on' : 'off');
-  const signedIn = state === 'on' || state === 'syncing';
-  $('googleBtnWrap').style.display = signedIn ? 'none' : 'flex';
-  const scb = $('btnSaveClientId');
-  if (scb) scb.style.display = signedIn ? 'none' : '';
-  $('btnGoogleOut').classList.toggle('hidden', !signedIn);
+  if (dot) dot.className = 'sync-dot ' + (state === 'on' ? 'on' : 'off');
   const labels = {
-    off: 'Not signed in. Data stays on this device only.',
-    on: 'Signed in. Data syncs privately across all your devices.',
-    syncing: 'Syncing...',
+    off: 'Not signed in.',
+    on: 'Signed in. Your hours are private to your Google account.',
+    syncing: 'Loading your hours...',
     error: 'Sync failed. Try signing in again.'
   };
-  $('syncStatus').textContent = labels[state] || labels.off;
+  const info = $('accountInfo');
+  if (info) info.textContent = labels[state] || labels.off;
+}
+
+function showApp() {
+  $('loginGate').classList.add('hidden');
+  $('mainApp').classList.remove('hidden');
+}
+
+function showGate() {
+  $('mainApp').classList.add('hidden');
+  $('loginGate').classList.remove('hidden');
+  // show client ID field only if not configured yet
+  const hasId = !!settings.clientId;
+  $('clientIdField').style.display = hasId ? 'none' : '';
+  if (hasId) renderGoogleButton();
+}
+
+function makeTokenClient(clientId) {
+  return google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: DRIVE_SCOPE,
+    callback: async (resp) => {
+      if (resp.error) { toast('Google sign-in failed'); return; }
+      gToken = resp.access_token;
+      setSyncUI('syncing');
+      try {
+        await drivePull();
+        setSyncUI('on');
+        showApp();
+        renderAll();
+        toast('Welcome back.');
+      } catch (e) {
+        console.warn('Drive pull failed', e);
+        setSyncUI('error');
+      }
+    }
+  });
 }
 
 function initGIS() {
@@ -105,23 +137,7 @@ function initGIS() {
     setTimeout(initGIS, 500);
     return;
   }
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: settings.clientId || '',
-    scope: DRIVE_SCOPE,
-    callback: async (resp) => {
-      if (resp.error) { toast('Google sign-in failed'); setSyncUI('off'); return; }
-      gToken = resp.access_token;
-      setSyncUI('syncing');
-      try {
-        await drivePull();
-        setSyncUI('on');
-        toast('Signed in. Data synced.');
-      } catch (e) {
-        console.warn('Drive pull failed', e);
-        setSyncUI('error');
-      }
-    }
-  });
+  tokenClient = makeTokenClient(settings.clientId || '');
   if (settings.clientId) renderGoogleButton();
 }
 
@@ -154,14 +170,10 @@ $('btnSaveClientId').onclick = () => {
   if (!cid) { toast('Enter your Google OAuth Client ID first'); return; }
   settings.clientId = cid;
   saveSettings(settings);
-  // re-init token client with new ID
-  tokenClient = google.accounts.oauth2.initTokenClient({
-    client_id: cid,
-    scope: DRIVE_SCOPE,
-    callback: tokenClient.callback
-  });
+  tokenClient = makeTokenClient(cid);
+  $('clientIdField').style.display = 'none';
   renderGoogleButton();
-  toast('Client ID saved. Now sign in with Google below.');
+  toast('Saved. Now sign in with Google.');
 };
 
 $('btnGoogleOut').onclick = () => {
@@ -171,6 +183,7 @@ $('btnGoogleOut').onclick = () => {
   gToken = null;
   driveFileId = null;
   setSyncUI('off');
+  showGate();
   toast('Signed out');
 };
 
@@ -582,7 +595,7 @@ function renderAll() {
 
 $('todayLabel').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 $('clientIdInput').value = settings.clientId || '';
-setSyncUI('off');
 setState('idle');
 renderAll();
+showGate();
 initGIS();

@@ -12,7 +12,26 @@
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
-<div class="app">
+<!-- Login gate: no entry without Google sign-in -->
+<div class="login-gate" id="loginGate">
+  <div class="login-card">
+    <div class="brand-mark login-mark">◷</div>
+    <h1>Work Hours</h1>
+    <p class="muted">Sign in with Google to access your private hours tracker.</p>
+    <div class="field" id="clientIdField">
+      <label>Google OAuth Client ID <span class="muted">(one-time setup)</span></label>
+      <input type="text" id="clientIdInput" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off">
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-soft" id="btnSaveClientId">Save</button>
+      </div>
+    </div>
+    <div class="google-btn-wrap" id="googleBtnWrap">
+      <div id="googleBtn"></div>
+    </div>
+  </div>
+</div>
+
+<div class="app hidden" id="mainApp">
 
   <header class="topbar">
     <div class="brand">
@@ -107,22 +126,11 @@
     <!-- SETTINGS -->
     <section class="tab-page" id="page-settings">
       <div class="card">
-        <h2>Cloud Sync</h2>
-        <p class="muted">Sign in with Google to keep your hours private and synced across all devices and browsers. Data is stored in a private folder in your own Google Drive that only this app can access.</p>
-        <div class="field">
-          <label>Google OAuth Client ID</label>
-          <input type="text" id="clientIdInput" placeholder="xxxx.apps.googleusercontent.com" autocomplete="off">
-        </div>
+        <h2>Account</h2>
+        <p class="muted" id="accountInfo">Signed in with Google. Your hours are private to your account.</p>
         <div class="btn-row">
-          <button class="btn btn-soft" id="btnSaveClientId">Save Client ID</button>
+          <button class="btn btn-soft" id="btnGoogleOut">Sign Out</button>
         </div>
-        <div class="google-btn-wrap" id="googleBtnWrap">
-          <div id="googleBtn"></div>
-        </div>
-        <div class="btn-row">
-          <button class="btn btn-soft hidden" id="btnGoogleOut">Sign Out</button>
-        </div>
-        <div class="sync-status muted" id="syncStatus">Not signed in. Data stays on this device only.</div>
       </div>
 
       <div class="card">
@@ -139,8 +147,8 @@
         <ol class="help-list">
           <li>Create a project in the <b>Google Cloud Console</b> and enable the <b>Google Drive API</b>.</li>
           <li>Create an <b>OAuth 2.0 Client ID</b> (Web application) and add this site as an authorized JavaScript origin.</li>
-          <li>Paste the Client ID above and tap <b>Sign in with Google</b>.</li>
-          <li>On every other device or browser, paste the same Client ID and sign in with the same Google account. Everything stays in sync and private.</li>
+          <li>On first launch, paste the Client ID on the sign-in screen and tap <b>Save</b>.</li>
+          <li>Then sign in with Google. On any other device, just sign in with the same Google account.</li>
         </ol>
       </div>
     </section>

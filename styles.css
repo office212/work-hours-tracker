@@ -330,6 +330,36 @@ code.sql {
 }
 .google-btn-wrap:empty { display: none; }
 
+/* Login gate */
+.login-gate {
+  position: fixed; inset: 0;
+  background: linear-gradient(160deg, #eef0fe 0%, var(--bg) 55%, #f4f6fa 100%);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+  z-index: 200;
+}
+.login-card {
+  background: #fff;
+  border-radius: 28px;
+  box-shadow: var(--shadow-lg);
+  padding: 44px 36px;
+  width: 100%; max-width: 400px;
+  text-align: center;
+  animation: fadeUp .4s ease;
+}
+.login-mark {
+  width: 64px; height: 64px;
+  font-size: 34px;
+  border-radius: 20px;
+  margin: 0 auto 18px;
+}
+.login-card h1 {
+  margin: 0 0 8px;
+  font-size: 30px; font-weight: 800; letter-spacing: -0.03em;
+}
+.login-card .muted { margin-bottom: 6px; }
+.login-card .field { text-align: left; margin-top: 18px; }
+
 @media (min-width: 600px) {
   .app { padding: 24px 0 100px; }
   .topbar { padding: 8px 20px 16px; }
