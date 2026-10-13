@@ -340,14 +340,17 @@ $('btnGoogleOut').onclick = async () => {
   try {
     localStorage.removeItem(LS_SESSIONS);
     localStorage.removeItem(LS_SETTINGS);
+    localStorage.removeItem(LS_TIMER);
   } catch (e) {}
   timerProjectId = null;
+  swState = 'idle'; swStart = 0; swElapsed = 0; swFirstStart = 0;
+  if (rafId) cancelAnimationFrame(rafId);
   setSyncUI('off');
   showGate();
   toast('Signed out');
 };
 
-async function dFetch(url, opts) {
+async function dFetch(url, opts, rawText) {
   opts = opts || {};
   opts.headers = Object.assign({}, opts.headers, { Authorization: 'Bearer ' + gToken });
   const r = await fetch(url, opts);
@@ -363,12 +366,23 @@ async function dFetch(url, opts) {
     toast('Sync disconnected, please reconnect in Account tab');
   }
   if (!r.ok) throw new Error('Drive API ' + r.status);
+  if (rawText) return r.text();
   const ct = r.headers.get('content-type') || '';
   return ct.includes('json') ? r.json() : r.text();
 }
 
 async function drivePull() {
   if (!gToken) { dbg('pull: no token'); return; }
+  if (drivePull._busy) { dbg('pull: already in progress, skipping'); return; }
+  drivePull._busy = true;
+  try {
+    await drivePullInner();
+  } finally {
+    drivePull._busy = false;
+  }
+}
+
+async function drivePullInner() {
   dbg('pull: querying Drive...');
   // find existing data file (most recently modified first, in case of duplicates)
   const q = encodeURIComponent("'" + 'appDataFolder' + "' in parents and name='" + DATA_FILENAME + "' and trashed=false");
@@ -377,13 +391,13 @@ async function drivePull() {
   if (list.files && list.files.length) {
     driveFileId = list.files[0].id;
     dbg('pull: fileId=' + driveFileId);
-    const raw = await dFetch('https://www.googleapis.com/drive/v3/files/' + driveFileId + '?alt=media');
-    // dFetch may return a parsed object (when content-type is JSON) or a string
-    const text = typeof raw === 'string' ? raw : JSON.stringify(raw);
+    // Fetch as raw text so JSON parse errors land in our try block below
+    // (dFetch would otherwise throw inside r.json() before we can handle it)
+    const text = await dFetch('https://www.googleapis.com/drive/v3/files/' + driveFileId + '?alt=media', null, true);
     dbg('pull: downloaded ' + text.length + ' chars');
     let cloud;
     try {
-      cloud = typeof raw === 'string' ? JSON.parse(text) : raw;
+      cloud = JSON.parse(text);
     } catch (e) {
       console.warn('Parse cloud data failed', e);
       lastSyncError = 'Download parse failed';
@@ -506,6 +520,16 @@ window.addEventListener('focus', async () => {
 
 async function uploadNow() {
   if (!gToken) return;
+  if (uploadNow._busy) { dbg('push: already in progress, skipping'); return; }
+  uploadNow._busy = true;
+  try {
+    await uploadNowInner();
+  } finally {
+    uploadNow._busy = false;
+  }
+}
+
+async function uploadNowInner() {
   // One upload attempt: PATCH the known cloud file, or create it when unknown.
   const attemptUpload = async () => {
     const payload = JSON.stringify({
@@ -951,24 +975,42 @@ function renderDay() {
   list.forEach(s => box.appendChild(sessionRow(s)));
 }
 $('dayPicker').onchange = e => {
-  // flush any pending note save before switching days
-  clearTimeout(dayNoteTimer);
+  flushDayNote();
   dayCursor = e.target.value; renderDay();
 };
 $('dayFilter').onchange = e => { dayFilter = e.target.value; renderDay(); };
 
 let dayNoteTimer = null;
+let dayNotePendingDay = null;
+function flushDayNote() {
+  // Save any pending note immediately (called before day switch or page hide)
+  if (dayNoteTimer) {
+    clearTimeout(dayNoteTimer);
+    dayNoteTimer = null;
+    if (dayNotePendingDay) {
+      const v = $('dayNote').value.trim();
+      const notes = getDayNotes();
+      notes[dayNotePendingDay] = v || '';
+      dayNotePendingDay = null;
+      saveSettings(settings);
+      drivePush();
+    }
+  }
+}
 $('dayNote').addEventListener('input', e => {
   clearTimeout(dayNoteTimer);
+  dayNotePendingDay = dayCursor;
   dayNoteTimer = setTimeout(() => {
     const v = e.target.value.trim();
     const notes = getDayNotes();
-    if (v) notes[dayCursor] = v;
-    else notes[dayCursor] = '';
+    notes[dayCursor] = v || '';
+    dayNotePendingDay = null;
     saveSettings(settings);
     drivePush();
   }, 800);
 });
+// flush pending note if user leaves the page
+window.addEventListener('pagehide', flushDayNote);
 
 /* ---------- Week page ---------- */
 let weekCursor = weekStart(new Date());
@@ -1272,10 +1314,20 @@ $('btnExportNotes').onclick = () => {
 };
 
 $('btnClear').onclick = async () => {
-  if (!confirm('Delete ALL sessions? This cannot be undone.')) return;
+  if (!confirm('Delete ALL data (sessions, notes, projects)? This cannot be undone.')) return;
   const now = new Date().toISOString();
+  // soft-delete all sessions so the deletion syncs
   sessions.forEach(s => { s.deleted = true; s.updatedAt = now; });
   saveSessions(sessions);
+  // clear day notes (empty string syncs the deletion)
+  const notes = getDayNotes();
+  Object.keys(notes).forEach(k => { notes[k] = ''; });
+  // soft-delete all non-default projects
+  const defId = getDefaultProjectId();
+  settings.projects.forEach(p => {
+    if (p.id !== defId && !p.deleted) { p.deleted = true; p.updatedAt = now; }
+  });
+  saveSettings(settings);
   renderAll();
   toast('All data cleared');
   drivePush();
