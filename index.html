@@ -74,11 +74,9 @@
           <select id="timerProject" class="project-select"></select>
         </div>
         <div class="timer-sub" id="timerSub">Tap start to begin tracking</div>
-        <div class="btn-row">
-          <button class="btn btn-primary" id="btnStart">Start</button>
-          <button class="btn btn-soft hidden" id="btnPause">Pause</button>
-          <button class="btn btn-soft hidden" id="btnResume">Resume</button>
+        <div class="btn-row timer-controls">
           <button class="btn btn-success hidden" id="btnStop">Stop &amp; Save</button>
+          <button class="btn btn-primary btn-toggle" id="btnToggle">Start</button>
           <button class="btn btn-ghost" id="btnReset">Reset</button>
         </div>
       </div>
@@ -86,7 +84,7 @@
       <div class="card">
         <div class="card-head">
           <h2>Today</h2>
-          <div class="big-total"><span id="todayTotal">0.00</span><small> hrs</small></div>
+          <div class="big-total"><span id="todayTotal">0 min</span></div>
         </div>
         <div class="session-list" id="todaySessions"></div>
         <div class="btn-row" style="margin-top:14px">
@@ -106,7 +104,7 @@
           </div>
         </div>
         <div class="summary-hero">
-          <div class="summary-num"><span id="dayTotal">0.00</span><small> hrs</small></div>
+          <div class="summary-num"><span id="dayTotal">0 min</span></div>
           <div class="summary-cap" id="dayCap"></div>
         </div>
         <div class="field day-note-field">
@@ -132,7 +130,7 @@
           <select id="weekFilter" class="filter-select"></select>
         </div>
         <div class="summary-hero">
-          <div class="summary-num"><span id="weekTotal">0.00</span><small> hrs</small></div>
+          <div class="summary-num"><span id="weekTotal">0 min</span></div>
           <div class="summary-cap" id="weekCap"></div>
         </div>
         <div class="bar-chart" id="weekChart"></div>
@@ -152,7 +150,7 @@
           <select id="monthFilter" class="filter-select"></select>
         </div>
         <div class="summary-hero">
-          <div class="summary-num"><span id="monthTotal">0.00</span><small> hrs</small></div>
+          <div class="summary-num"><span id="monthTotal">0 min</span></div>
           <div class="summary-cap" id="monthCap"></div>
         </div>
         <div class="cal-grid" id="calGrid"></div>

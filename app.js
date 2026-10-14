@@ -127,6 +127,15 @@ function fmtHMS(totalSec) {
 
 function fmtHours(sec) { return (sec / 3600).toFixed(2); }
 
+/* Human-friendly duration: "25 min", "1h 5m" (display only; exports keep decimal hours) */
+function fmtDur(sec) {
+  const totalMin = Math.round(sec / 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h === 0) return m + ' min';
+  return m === 0 ? h + 'h' : h + 'h ' + m + 'm';
+}
+
 function dateKey(d) {
   return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate());
 }
@@ -628,13 +637,13 @@ function renderProjectList() {
   const defId = getDefaultProjectId();
   getProjects().forEach(p => {
     const count = sessions.filter(s => s.projectId === p.id && !s.deleted).length;
-    const totalHrs = fmtHours(sessions.filter(s => s.projectId === p.id && !s.deleted).reduce((a, s) => a + s.seconds, 0));
+    const totalHrs = fmtDur(sessions.filter(s => s.projectId === p.id && !s.deleted).reduce((a, s) => a + s.seconds, 0));
     const row = document.createElement('div');
     row.className = 'project-row' + (p.id === defId ? ' is-default' : '');
     row.innerHTML =
       '<div><div class="project-name">' + escapeHtml(p.name) +
       (p.id === defId ? '<span class="default-badge">Default</span>' : '') + '</div>' +
-      '<div class="project-meta">' + count + ' sessions · ' + totalHrs + ' hrs</div></div>' +
+      '<div class="project-meta">' + count + ' sessions · ' + totalHrs + '</div></div>' +
       '<div class="project-actions"></div>';
     const acts = row.querySelector('.project-actions');
     if (p.id !== defId) {
@@ -752,7 +761,10 @@ function swTotalMs() {
 }
 
 function renderTimer() {
-  $('timerDisplay').textContent = fmtHMS(swTotalMs() / 1000);
+  const t = fmtHMS(swTotalMs() / 1000);
+  $('timerDisplay').textContent = t;
+  // Live elapsed time in the browser tab, like Google's stopwatch
+  document.title = swState === 'idle' ? 'Work Hours Tracker' : t + ' · Work Hours';
 }
 
 function tick() {
@@ -765,30 +777,50 @@ function setState(state) {
   saveTimerState();
   const pill = $('statusPill');
   const sub = $('timerSub');
-  $('btnStart').classList.toggle('hidden', state !== 'idle');
-  $('btnPause').classList.toggle('hidden', state !== 'running');
-  $('btnResume').classList.toggle('hidden', state !== 'paused');
+  const toggle = $('btnToggle');
+  // Central button: Start / Pause / Resume. Stop & Save sits on the side.
   $('btnStop').classList.toggle('hidden', state === 'idle');
+  toggle.textContent = state === 'running' ? 'Pause' : state === 'paused' ? 'Resume' : 'Start';
 
   pill.className = 'status-pill';
   if (state === 'running') {
     pill.classList.add('running'); pill.textContent = 'Running';
-    sub.textContent = 'Tracking your time...';
+    sub.textContent = 'Tracking your time... (Space = pause)';
     tick();
   } else if (state === 'paused') {
     pill.classList.add('paused'); pill.textContent = 'Paused';
-    sub.textContent = 'Paused. Resume or stop to save.';
+    sub.textContent = 'Paused. Space = resume, or stop to save.';
     cancelAnimationFrame(rafId); renderTimer();
   } else {
     pill.textContent = 'Ready';
-    sub.textContent = swElapsed > 0 ? 'Reset or start a new session' : 'Tap start to begin tracking';
+    sub.textContent = swElapsed > 0 ? 'Reset or start a new session' : 'Tap Start or press Space to begin';
     cancelAnimationFrame(rafId); renderTimer();
   }
 }
 
-$('btnStart').onclick = () => { swStart = Date.now(); swFirstStart = Date.now(); setState('running'); };
-$('btnPause').onclick = () => { swElapsed = swTotalMs(); setState('paused'); };
-$('btnResume').onclick = () => { swStart = Date.now(); setState('running'); };
+function togglePauseResume() {
+  if (swState === 'running') { swElapsed = swTotalMs(); setState('paused'); }
+  else if (swState === 'paused') { swStart = Date.now(); setState('running'); }
+}
+
+$('btnToggle').onclick = () => {
+  if (swState === 'idle') { swStart = Date.now(); swFirstStart = Date.now(); setState('running'); }
+  else togglePauseResume();
+};
+
+// Spacebar = pause/resume, but only on the Timer tab and never while typing
+document.addEventListener('keydown', e => {
+  if (e.code !== 'Space' && e.key !== ' ') return;
+  if ($('mainApp').classList.contains('hidden')) return;
+  if (!$('page-timer').classList.contains('active')) return;
+  if (!$('modalBackdrop').classList.contains('hidden')) return;
+  const el = document.activeElement;
+  const tag = el ? el.tagName : '';
+  if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+  if (tag === 'BUTTON' && el) el.blur(); // avoid double-trigger on focused button
+  e.preventDefault();
+  togglePauseResume();
+});
 $('btnReset').onclick = () => { swElapsed = 0; swFirstStart = 0; setState('idle'); clearTimerState(); };
 
 $('btnStop').onclick = async () => {
@@ -810,7 +842,7 @@ $('btnStop').onclick = async () => {
   saveSessions(sessions);
   swElapsed = 0; swFirstStart = 0; setState('idle'); clearTimerState();
   renderAll();
-  toast('Session saved: ' + fmtHours(session.seconds) + ' hrs → ' + getProject(session.projectId).name);
+  toast('Session saved: ' + fmtDur(session.seconds) + ' → ' + getProject(session.projectId).name);
   drivePush();
 };
 
@@ -825,7 +857,7 @@ function sessionRow(s) {
     '<span class="session-proj">' + escapeHtml(getProject(s.projectId).name) + '</span>' +
     (s.note ? '<small class="session-note">' + escapeHtml(s.note) + '</small>' : '') + '</div>' +
     '<div class="session-actions">' +
-    '<div class="session-dur">' + fmtHours(s.seconds) + 'h</div>' +
+    '<div class="session-dur">' + fmtDur(s.seconds) + '</div>' +
     '<button class="session-edit" data-id="' + s.id + '" title="Edit">✎</button>' +
     '<button class="session-del" data-id="' + s.id + '" title="Delete">×</button>' +
     '</div>';
@@ -847,7 +879,7 @@ function sessionRow(s) {
 function renderToday() {
   const key = dateKey(new Date());
   const list = sessionsFor(key).sort((a, b) => a.start.localeCompare(b.start));
-  $('todayTotal').textContent = fmtHours(totalFor(key));
+  $('todayTotal').textContent = fmtDur(totalFor(key));
   const box = $('todaySessions');
   box.innerHTML = '';
   list.forEach(s => box.appendChild(sessionRow(s)));
@@ -892,7 +924,7 @@ function updateModalDur() {
     let end = new Date(d + 'T' + en);
     if (end <= start) end = new Date(end.getTime() + 24 * 3600 * 1000); // crosses midnight
     const sec = Math.round((end - start) / 1000);
-    $('editDur').textContent = sec > 0 ? 'Duration: ' + fmtHours(sec) + ' hrs' : 'End time must be after start time';
+    $('editDur').textContent = sec > 0 ? 'Duration: ' + fmtDur(sec) : 'End time must be after start time';
   } else {
     $('editDur').textContent = '';
   }
@@ -940,7 +972,7 @@ $('btnModalSave').onclick = () => {
     };
     sessions.push(s);
     drivePush();
-    toast('Hours added: ' + fmtHours(sec) + ' hrs');
+    toast('Hours added: ' + fmtDur(sec));
   }
   saveSessions(sessions);
   closeModal();
@@ -963,7 +995,7 @@ function renderDay() {
   $('dayPicker').value = dayCursor;
   const list = filteredSessions(sessionsFor(dayCursor).sort((a, b) => a.start.localeCompare(b.start)), dayFilter);
   const totalSec = list.reduce((a, s) => a + s.seconds, 0);
-  $('dayTotal').textContent = fmtHours(totalSec);
+  $('dayTotal').textContent = fmtDur(totalSec);
   $('dayCap').textContent = fmtDateLong(dayCursor) + ' · ' + list.length + ' session' + (list.length === 1 ? '' : 's') +
     (dayFilter !== 'all' ? ' · ' + getProject(dayFilter).name : '');
   // Don't clobber the note field while the user is typing in it
@@ -1034,7 +1066,7 @@ function renderWeek() {
     weekSec += s; maxSec = Math.max(maxSec, s); return s;
   });
 
-  $('weekTotal').textContent = fmtHours(weekSec);
+  $('weekTotal').textContent = fmtDur(weekSec);
   const worked = secs.filter(s => s > 0).length;
   $('weekCap').textContent = worked + ' of 7 days worked' +
     (weekFilter !== 'all' ? ' · ' + getProject(weekFilter).name : '');
@@ -1047,7 +1079,7 @@ function renderWeek() {
     const col = document.createElement('div');
     col.className = 'bar-col' + (dateKey(d) === todayK ? ' today' : '');
     const h = Math.max(3, Math.round((secs[i] / maxSec) * 100));
-    col.innerHTML = '<div class="bar" style="height:' + h + '%" title="' + fmtHours(secs[i]) + ' hrs"></div><div class="bar-lbl">' + dowNames[i] + '</div>';
+    col.innerHTML = '<div class="bar" style="height:' + h + '%" title="' + fmtDur(secs[i]) + '"></div><div class="bar-lbl">' + dowNames[i] + '</div>';
     chart.appendChild(col);
   });
 
@@ -1059,7 +1091,7 @@ function renderWeek() {
     r.className = 'day-row' + (k === todayK ? ' today' : '');
     r.innerHTML = '<div class="dow">' + d.toLocaleDateString('en-US', { weekday: 'long' }) +
       '<small>' + d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + '</small></div>' +
-      '<div class="hrs' + (secs[i] === 0 ? ' zero' : '') + '">' + (secs[i] === 0 ? '—' : fmtHours(secs[i]) + ' hrs') + '</div>';
+      '<div class="hrs' + (secs[i] === 0 ? ' zero' : '') + '">' + (secs[i] === 0 ? '—' : fmtDur(secs[i])) + '</div>';
     r.style.cursor = 'pointer';
     r.onclick = () => { dayCursor = k; switchPage('day'); };
     rows.appendChild(r);
@@ -1084,7 +1116,7 @@ function renderMonth() {
     const s = filteredSessions(sessionsFor(k), monthFilter).reduce((a, x) => a + x.seconds, 0);
     if (s > 0) { monthSec += s; workedDays++; }
   }
-  $('monthTotal').textContent = fmtHours(monthSec);
+  $('monthTotal').textContent = fmtDur(monthSec);
   $('monthCap').textContent = workedDays + ' day' + (workedDays === 1 ? '' : 's') + ' worked' +
     (monthFilter !== 'all' ? ' · ' + getProject(monthFilter).name : '');
 
@@ -1115,10 +1147,10 @@ function renderMonth() {
     const cell = document.createElement('div');
     cell.className = 'cal-day' + (s > 0 ? ' has-hours' : '') + (k === todayK ? ' today' : '');
     cell.innerHTML = '<div class="dnum">' + d + '</div>' +
-      (s > 0 ? '<div class="dhrs">' + fmtHours(s) + 'h</div>' : '');
+      (s > 0 ? '<div class="dhrs">' + fmtDur(s) + '</div>' : '');
     if (s > 0) {
       cell.onclick = () => { dayCursor = k; switchPage('day'); };
-      cell.title = fmtHours(s) + ' hours — tap to view';
+      cell.title = fmtDur(s) + ' — tap to view';
     }
     grid.appendChild(cell);
   }
@@ -1175,13 +1207,13 @@ function renderStats() {
   const avgSession = list.length ? totalSec / list.length : 0;
 
   const stats = [
-    { val: fmtHours(totalSec), unit: 'hrs', lbl: 'Total Hours', accent: true },
-    { val: fmtHours(weekSec), unit: 'hrs', lbl: 'This Week' },
-    { val: fmtHours(monthSec), unit: 'hrs', lbl: 'This Month' },
-    { val: fmtHours(avgDay), unit: 'hrs', lbl: 'Avg / Day' },
+    { val: fmtDur(totalSec), unit: '', lbl: 'Total Hours', accent: true },
+    { val: fmtDur(weekSec), unit: '', lbl: 'This Week' },
+    { val: fmtDur(monthSec), unit: '', lbl: 'This Month' },
+    { val: fmtDur(avgDay), unit: '', lbl: 'Avg / Day' },
     { val: String(list.length), unit: '', lbl: 'Sessions' },
     { val: String(streak), unit: 'days', lbl: 'Day Streak' },
-    { val: fmtHours(avgSession), unit: 'hrs', lbl: 'Avg Session' },
+    { val: fmtDur(avgSession), unit: '', lbl: 'Avg Session' },
     { val: String(daysWorked), unit: '', lbl: 'Days Worked' }
   ];
 
@@ -1211,7 +1243,7 @@ function renderStats() {
     const pct = Math.max(2, Math.round((sec / maxP) * 100));
     row.innerHTML =
       '<div class="proj-bar-top"><span class="pname">' + escapeHtml(getProject(pid).name) + '</span>' +
-      '<span class="phrs">' + fmtHours(sec) + ' hrs</span></div>' +
+      '<span class="phrs">' + fmtDur(sec) + '</span></div>' +
       '<div class="proj-bar-track"><div class="proj-bar-fill" style="width:' + pct + '%"></div></div>';
     bars.appendChild(row);
   });
@@ -1220,7 +1252,7 @@ function renderStats() {
   const hl = $('statHighlights');
   hl.innerHTML = '';
   const items = [];
-  if (bestDay) items.push(['Best Day', parseKey(bestDay).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), fmtHours(bestSec) + ' hrs']);
+  if (bestDay) items.push(['Best Day', parseKey(bestDay).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }), fmtDur(bestSec)]);
   if (streak >= 2) items.push(['Current Streak', streak + ' days in a row', '']);
   // busiest weekday
   const dowSec = [0, 0, 0, 0, 0, 0, 0];
@@ -1228,7 +1260,7 @@ function renderStats() {
   const dowNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   let bd = 0;
   dowSec.forEach((v, i) => { if (v > dowSec[bd]) bd = i; });
-  if (dowSec[bd] > 0) items.push(['Busiest Weekday', dowNames[bd], fmtHours(dowSec[bd]) + ' hrs total']);
+  if (dowSec[bd] > 0) items.push(['Busiest Weekday', dowNames[bd], fmtDur(dowSec[bd]) + ' total']);
   items.forEach(([t, a, b]) => {
     const r = document.createElement('div');
     r.className = 'day-row';
